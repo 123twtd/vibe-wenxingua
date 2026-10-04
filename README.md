@@ -43,7 +43,10 @@
 
 ### 方式一（推荐）：桌面版
 
-仓库里**不含安装包**（二进制不进 git）。自己打一个，约两分钟：
+仓库里**不含安装包**（二进制不进 git，走 Releases）。两条路：
+
+- **直接下载**：[最新安装包](https://github.com/123twtd/vibe-wenxingua/releases/latest)（约 78 MB，中文向导，双击安装）
+- **自己打**，约两分钟：
 
 ```
 cd desktop

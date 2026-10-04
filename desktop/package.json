@@ -1,0 +1,96 @@
+{
+  "name": "wenxingua-desktop",
+  "version": "1.1.0",
+  "private": true,
+  "description": "问心卦 · 桌面版（Electron 外壳；内核仍是零依赖的纯 Node）",
+  "main": "main.mjs",
+  "type": "module",
+  "author": "问心卦",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "selftest": "electron . --selftest",
+    "icon": "python build/make-icon.py",
+    "dist": "electron-builder --win nsis --x64",
+    "dist:dir": "electron-builder --win dir --x64"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "local.wenxingua.desktop",
+    "productName": "问心卦",
+    "copyright": "问心卦 · 本地单机程序",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.mjs",
+      "preload.cjs",
+      "package.json",
+      "build/icon.png",
+      "build/tray.png",
+      "!dist/**",
+      "!node_modules/**/{test,__tests__,tests,example,examples,docs,doc}/**"
+    ],
+    "extraResources": [
+      {
+        "from": "..",
+        "to": "app",
+        "filter": [
+          "core/**",
+          "server/**",
+          "agent/**",
+          "hermes/**",
+          "web/**",
+          "schema/**",
+          "knowledge/**",
+          "tools/**",
+          "package.json",
+          "README.md",
+          "AGENTS.md",
+          "LICENSE*",
+          "docs/**/*.md"
+        ]
+      },
+      {
+        "from": "../data",
+        "to": "seed-data",
+        "filter": [
+          "plugins/**"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "问心卦-安装包-${version}.${ext}",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "问心卦",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerLanguages": [
+        "zh_CN"
+      ],
+      "language": "2052",
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

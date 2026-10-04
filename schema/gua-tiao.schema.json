@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wenxingua.local/schema/gua-tiao.schema.json",
+  "title": "问心卦 · 卦条（解析结果）",
+  "description": "「卦条 v1」纯文本经 core/guaTiao.mjs 解析后的结构。这是本程序保证稳定的对外导入契约：文本格式见 docs/规范.md，本文件约束解析结果，供 /api/import/commit、save_gua_tiao 工具与校验器共用。",
+  "type": "object",
+  "required": ["ok", "source", "version", "fields", "claimed", "missing"],
+  "properties": {
+    "ok": { "type": "boolean", "description": "信息是否齐全到可以入库。" },
+    "source": { "type": "string", "const": "gua-tiao" },
+    "version": { "type": "integer", "const": 1, "description": "卦条格式版本。" },
+    "confidence": { "type": "integer", "minimum": 0, "maximum": 100, "description": "识别度百分比。" },
+    "strategy": { "type": "string", "enum": ["hexagram", "cast"], "description": "入库方式：指定本卦＋动爻，或按报数＋时间重起。" },
+    "fields": {
+      "type": "object",
+      "required": ["localTime", "useTrueSolarTime", "numbers", "method"],
+      "properties": {
+        "localTime": {
+          "type": "string",
+          "description": "起卦的钟表时间，YYYY-MM-DD HH:mm；缺失则为空串并在 missing 里报出。"
+        },
+        "placeName": { "type": "string" },
+        "longitude": { "type": ["number", "null"], "minimum": -180, "maximum": 180 },
+        "latitude": { "type": ["number", "null"], "minimum": -90, "maximum": 90 },
+        "useTrueSolarTime": { "type": "boolean" },
+        "numbers": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+        "question": { "type": "string" },
+        "category": { "type": "string" },
+        "notes": { "type": "array", "items": { "type": "string" } },
+        "method": { "type": "string", "enum": ["numberAndTime", "twoNumbers", "timeOnly", "manual"] },
+        "movingFrom": { "type": "string", "enum": ["sum", "number"] }
+      },
+      "additionalProperties": true
+    },
+    "claimed": {
+      "type": "object",
+      "description": "卦条里写的卦（写了几项就有几项）。与程序重算结果不一致时进入校勘。",
+      "properties": {
+        "ben": { "type": ["string", "null"] },
+        "hu": { "type": ["string", "null"] },
+        "bian": { "type": ["string", "null"] },
+        "moving": { "type": ["integer", "null"], "minimum": 1, "maximum": 6 },
+        "tiyong": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "signature": { "type": "string", "description": "若卦条写了「签」，则覆盖引擎生成的谶语。" },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "review": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["待应验", "应验中", "已应验", "未应验", "已过期", "无需应验", ""]
+        },
+        "result": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "title": { "type": "string" },
+    "narrative": { "type": "string", "description": "「原文: |」块的内容——解读全文。" },
+    "background": { "type": "string", "description": "「背景: |」块的内容——求测人背景／动机／几件事的轻重。" },
+    "plan": { "type": "string", "description": "「方案: |」块的内容——可执行方案。" },
+    "collation": { "type": "string", "description": "「校勘: |」块的内容——人工校勘说明，与引擎自动算出的 corrections 分开。" },
+    "qa": { "type": "string", "description": "「问答: |」块的内容——原文问答，约定以「问：」「答：」起行。" },
+    "missing": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "缺哪些必填信息（如「起卦时间」「动爻」）。解析器宁可报缺，也不猜。"
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "unknownKeys": { "type": "array", "items": { "type": "string" }, "description": "认不出的键名——多半是写错了字。" },
+    "hints": { "type": "array", "items": { "type": "string" } },
+    "detected": { "type": "object", "additionalProperties": true },
+    "hexagramText": { "type": "string" },
+    "movingText": { "type": "string" },
+    "tiyongText": { "type": "string" }
+  },
+  "additionalProperties": true
+}

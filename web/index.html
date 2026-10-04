@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>问心卦 · 梅花易数卦录台</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="/icon.png">
+</head>
+<body>
+<div class="app">
+
+  <!-- 顶栏：品牌 · 全局搜索（Ctrl+K）· 主操作 · 健康灯 -->
+  <header class="top">
+    <div class="top-brand">問心卦<span class="sub">WEN XIN GUA</span></div>
+    <button class="top-search" id="top-search" title="搜索页面、操作、卦录">
+      <span>⌘</span><span class="mine" id="top-search-hint">搜页面、操作、卦录…</span><kbd>Ctrl</kbd><kbd>K</kbd>
+    </button>
+    <div class="top-actions">
+      <button class="btn sm ghost" id="top-theme" title="宣纸 / 夜读（同一套设计语言，两套纸）">夜 读</button>
+      <button class="btn primary sm" id="top-cast">＋ 起 一 卦</button>
+      <button class="btn sm ai-btn" id="top-ai" title="随时唤起助手（Ctrl/⌘ + J）">✦ 助 手</button>
+      <span class="hdot" id="top-health" title="本地服务"><i></i><span id="top-health-text">本地</span></span>
+    </div>
+  </header>
+
+  <!-- 侧栏：六项主项 + 自成一组的插件（组内滚动） + 「更多」，侧栏本身永不滚动 -->
+  <div class="shell">
+    <aside class="side">
+      <nav class="nav" id="nav"></nav>
+      <div class="nav-extra" id="nav-extra"></div>
+      <div class="side-foot">
+        <button class="more-btn" id="more-btn"><span class="ic">⋯</span>更 多<span class="caret">▾</span></button>
+        <div class="side-meta" id="meta-line"></div>
+      </div>
+    </aside>
+    <main class="main" id="main">
+      <div class="empty"><div class="big">☯</div>正在唤醒…</div>
+    </main>
+  </div>
+
+  <!-- 状态栏：把散信息压成一行，不占侧栏 -->
+  <footer class="status" id="status"></footer>
+</div>
+
+<div class="more-panel" id="more-panel"></div>
+
+<!-- 助手面板：停靠在右侧的常驻一栏，像 IDE 里的 agent 面板。
+     主区永远是卦，助手是配角；面板可收起、可拖宽，状态记在 localStorage。
+     它挂在 .app 之外，所以切页重绘碰不到它——切页不丢对话是天然成立的。 -->
+<aside class="agent-panel" id="agent-panel" aria-label="助手">
+  <div class="ap-resize" id="ap-resize" title="拖拽调整宽度"></div>
+  <div class="ap-head">
+    <select id="ap-sessions" title="历史会话（存在 data/chats/ 下）"></select>
+    <button class="btn sm ghost" id="ap-new" title="开一段新会话">＋</button>
+    <button class="btn sm ghost" id="ap-rename" title="重命名这段会话">✎</button>
+    <button class="btn sm ghost" id="ap-del" title="删除这段会话（先进回收目录）">✕</button>
+    <span style="flex:1"></span>
+    <!-- 两枚常驻 chip：上下文占用 / 厂商余额。放在「设置」之前——它们是「发消息前先看一眼」
+         的即时信息，不是设置项；内容由 app.js 的 paintPanelChips() 填。 -->
+    <span class="ap-chips" id="ap-chips"></span>
+    <button class="btn sm ghost" id="ap-attach" title="加一个附件（只存不解析，文本类会内联进提示词）">📎</button>
+    <button class="btn sm ghost" id="ap-open-page" title="到「助手」页看模型设置与工具清单">设置</button>
+    <button class="btn sm ghost" id="ap-close" title="收起（Esc）">›</button>
+  </div>
+  <div class="ap-body" id="ap-body"></div>
+  <div class="ap-foot" id="ap-foot"></div>
+  <input type="file" id="ap-file" style="display:none">
+</aside>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wenxingua.local/schema/record.schema.json",
+  "title": "问心卦 · 卦录",
+  "description": "一条卦录的完整结构。cast 是唯一真源（可重算），chart 与 reading 是快照（保证旧卦录稳定可读）。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "title", "category", "cast", "chart", "reading", "review", "createdAt", "updatedAt"],
+  "properties": {
+    "schema": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "结构版本号。当前为 3（v2 增 yingqi；v3 增 background／plan／collation／qa 四项补充存录）。升级路径见 core/migrate.mjs。"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9]{12}-[0-9]{2}$",
+      "description": "卦录编号：起卦时间 YYYYMMDDHHmm ＋ 两位序号。一经生成不再更改。"
+    },
+    "title": { "type": "string", "maxLength": 200, "description": "标题。" },
+    "category": {
+      "type": "string",
+      "enum": ["考研学业", "求职事业", "财运生计", "心态情绪", "作息健康", "人际情感", "决策取舍", "其他"],
+      "description": "类别。决定断语里「宜/忌」的取向。"
+    },
+    "question": { "type": "string", "maxLength": 2000, "description": "所问之事。一事一占。" },
+    "cast": {
+      "type": "object",
+      "description": "起卦输入——唯一真源。任何一条卦录都能由它重算。",
+      "required": ["method", "localTime"],
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": ["numberAndTime", "twoNumbers", "timeOnly", "manual"],
+          "description": "numberAndTime＝一数＋时辰；twoNumbers＝两数；timeOnly＝年月日时；manual＝已知本卦与动爻。"
+        },
+        "numbers": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 },
+          "description": "报数。"
+        },
+        "localTime": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}$",
+          "description": "钟表时间，YYYY-MM-DD HH:mm。"
+        },
+        "useTrueSolarTime": { "type": "boolean", "description": "是否按真太阳时定时辰。" },
+        "movingFrom": { "type": "string", "enum": ["sum", "number", "manual"], "description": "动爻取法。" },
+        "longitude": { "type": ["number", "null"], "minimum": -180, "maximum": 180, "description": "东经度数。" },
+        "latitude": { "type": ["number", "null"], "minimum": -90, "maximum": 90, "description": "北纬度数。" },
+        "placeName": { "type": "string", "description": "地点名。" },
+        "hexagram": { "type": "string", "description": "method=manual 时的本卦。" },
+        "movingPosition": { "type": ["integer", "null"], "minimum": 1, "maximum": 6, "description": "动爻（自下而上）。" },
+        "question": { "type": "string" },
+        "category": { "type": "string" },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "chart": {
+      "type": "object",
+      "description": "卦局快照：本卦／互卦／变卦／六爻／动爻／体用／旺衰／吉凶评分／历法。结构随内核演进，故此处不锁死。",
+      "required": ["ben", "hu", "bian", "moving", "tiyong", "score", "calendar"],
+      "additionalProperties": true
+    },
+    "reading": {
+      "type": "object",
+      "description": "断语快照：谶 ＋ 七段定调 ＋ 通俗解 ＋ 古辞佐证。",
+      "required": ["signature", "tone", "plain", "grade"],
+      "properties": {
+        "signature": { "type": "string", "description": "谶语：一卦气质最重处。" },
+        "tone": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "description": "七段定调，顺序为 主、互、变、断、宜、忌、应期。",
+          "items": {
+            "type": "object",
+            "required": ["key", "label", "text"],
+            "properties": {
+              "key": { "type": "string", "enum": ["main", "hu", "bian", "duan", "yi", "ji", "yingqi"] },
+              "label": { "type": "string", "enum": ["主", "互", "变", "断", "宜", "忌", "应期"] },
+              "text": { "type": "string", "minLength": 4 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "classical": { "type": "object", "description": "古辞佐证：卦辞、大象辞、爻辞、互卦／变卦象辞。", "additionalProperties": true },
+        "plain": {
+          "type": "object",
+          "required": ["oneLine", "focus", "why", "how"],
+          "properties": {
+            "oneLine": { "type": "string", "description": "一句话结论。" },
+            "focus": { "type": "string", "description": "要旨。" },
+            "why": { "type": "array", "items": { "type": "string" }, "description": "为什么这样说。" },
+            "how": { "type": "array", "items": { "type": "string" }, "description": "怎么做。" }
+          },
+          "additionalProperties": true
+        },
+        "grade": {
+          "type": "object",
+          "required": ["key", "label", "tone"],
+          "properties": {
+            "key": { "type": "string", "enum": ["daji", "ji", "zhongji", "ping", "xiaoxiong", "xiong"] },
+            "label": { "type": "string", "enum": ["大吉", "吉", "中吉", "平", "小凶", "凶"] },
+            "tone": { "type": "string", "enum": ["good", "neutral", "warn", "bad"] },
+            "desc": { "type": "string" }
+          },
+          "additionalProperties": true
+        },
+        "category": { "type": "string" },
+        "generatedBy": { "type": "string", "description": "生成此断语的引擎标识，便于日后判断是否需要重算。" }
+      },
+      "additionalProperties": true
+    },
+    "claimed": {
+      "type": ["object", "null"],
+      "description": "当初别人口头所述的卦，用于校勘。可只填认得出的字段，认不出的字段省略或为 null。",
+      "properties": {
+        "ben": { "type": ["string", "null"] },
+        "hu": { "type": ["string", "null"] },
+        "bian": { "type": ["string", "null"] },
+        "moving": { "type": ["integer", "null"], "minimum": 1, "maximum": 6 },
+        "tiyong": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "yingqi": {
+      "type": ["object", "null"],
+      "description": "应期区间：由 chart 派生（体卦旺衰 + 动爻之位 + 体用生克 + 卦数），与断语「应期」那一段同源。走势图按它落点，故长期之事不会被压在起卦当天。用户可手改，改过之后 source 记为 manual；老记录迁移时算不出来则为 null。",
+      "required": ["minDays", "maxDays", "horizon", "source"],
+      "properties": {
+        "minDays": { "type": "integer", "minimum": 1, "description": "区间起（自起卦之日起算的天数）" },
+        "maxDays": { "type": "integer", "minimum": 1, "description": "区间止（同上）" },
+        "from": { "type": "string", "description": "起算日 YYYY-MM-DD；缺起卦时间时为空串" },
+        "to": { "type": "string", "description": "区间末日 YYYY-MM-DD；缺起卦时间时为空串" },
+        "horizon": { "type": "string", "enum": ["near", "mid", "far", "long"], "description": "远近分档：近期 / 中期 / 较远 / 长期" },
+        "horizonName": { "type": "string" },
+        "unit": { "type": "string", "description": "刻度说法，如「以旬计」" },
+        "hint": { "type": "string" },
+        "inSeason": { "type": "boolean", "description": "体卦是否当令得气（得气则应期落在短窗口内）" },
+        "seasonAt": {
+          "type": ["object", "null"],
+          "description": "体未得气时，「得令之月」那一段（量化上限就是它）",
+          "properties": {
+            "date": { "type": "string" },
+            "endDate": { "type": "string" },
+            "days": { "type": "integer" },
+            "month": { "type": "integer" }
+          },
+          "additionalProperties": true
+        },
+        "basis": {
+          "type": "object",
+          "description": "逐项依据，界面要摊开给人看——算不出理由的应期和随口一说没区别",
+          "additionalProperties": true
+        },
+        "reason": { "type": "string", "description": "一段人话说明这个区间是怎么来的" },
+        "source": { "type": "string", "enum": ["computed", "manual"], "description": "算出来的还是人改的" }
+      },
+      "additionalProperties": true
+    },
+    "corrections": {
+      "type": "array",
+      "description": "校勘：当初表述与依正法重算不符之处，一律存录不删改。",
+      "items": {
+        "type": "object",
+        "required": ["label", "note"],
+        "properties": {
+          "field": { "type": "string" },
+          "label": { "type": "string" },
+          "stated": { "type": "string" },
+          "computed": { "type": "string" },
+          "note": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "review": {
+      "type": "object",
+      "required": ["status", "result", "log"],
+      "description": "复盘：长期使用中最值钱的部分。",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["待应验", "应验中", "已应验", "未应验", "已过期", "无需应验"]
+        },
+        "result": { "type": "string", "description": "实况：后来发生了什么、卦在何处应了、何处没应。" },
+        "reviewedAt": { "type": ["string", "null"], "description": "复盘时间。" },
+        "log": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "at": { "type": "string" },
+              "text": { "type": "string" }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "narrative": { "type": "string", "description": "原文存录：当初的完整解读文字（Markdown）。" },
+    "narrativeHtml": { "type": "string" },
+    "background": {
+      "type": "string",
+      "description": "求测人背景：身份、动机、几件事各占几分。卦条键「背景」，支持多行块。可省。"
+    },
+    "plan": {
+      "type": "string",
+      "description": "可执行方案：断语给的是通则，这里存落到这个人、这件事上的具体做法。卦条键「方案」。可省。"
+    },
+    "collation": {
+      "type": "string",
+      "description": "人工校勘：人对旧解读措辞的更正（如「阳变阴」应作「六四阴爻动，变阳」）。与引擎自动算出的 corrections 分开——那是机器的，这是人的。可省。"
+    },
+    "qa": {
+      "type": "string",
+      "description": "原文问答：当初的问答原话，约定以「问：」「答：」起行。与 narrative（解读全文）分开——一个是往来，一个是成文。可省。"
+    },
+    "origin": {
+      "type": "object",
+      "description": "来源：本机起卦／粘贴导入／卦条导入／AI 助手录入。",
+      "properties": {
+        "kind": { "type": "string" },
+        "label": { "type": "string" },
+        "url": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "source": { "type": ["object", "null"], "additionalProperties": true },
+    "createdAt": { "type": "string", "description": "录入时间（ISO）。" },
+    "updatedAt": { "type": "string", "description": "最后修改时间（ISO）。" },
+    "revisionCount": { "type": "integer", "minimum": 0, "description": "重算次数。" }
+  }
+}

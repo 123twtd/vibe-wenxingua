@@ -1,0 +1,8 @@
+# 换行统一为 LF，免得在不同平台上整棵树都显示成已修改。
+# 图片、图标与安装包按二进制处理。
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.exe binary
+*.zip binary

@@ -1,0 +1,40 @@
+{
+  "name": "wenxingua",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "问心卦 · 梅花易数卦录台：长期记录卦象、快速导入新卦、按正法重算并给出有卦象气质的断语。",
+  "scripts": {
+    "start": "node server/index.mjs --open",
+    "serve": "node server/index.mjs",
+    "mcp": "node agent/mcp-server.mjs",
+    "seed": "node tools/seed.mjs",
+    "seed:force": "node tools/seed.mjs --force",
+    "import": "node tools/import.mjs",
+    "template": "node tools/import.mjs --template",
+    "validate": "node tools/validate.mjs",
+    "check": "node tools/check.mjs",
+    "check:web": "node tools/check-web.mjs",
+    "check:mcp": "node tools/check-mcp.mjs",
+    "check:desktop": "node tools/check-desktop.mjs",
+    "check:hermes": "node tools/check-hermes.mjs",
+    "check:schema": "node tools/check-validate.mjs",
+    "check:all": "node tools/check.mjs && node tools/check-validate.mjs && node tools/check-mcp.mjs && node tools/check-hermes.mjs && node tools/check-desktop.mjs && node tools/check-web.mjs && node tools/check-docs.mjs",
+    "desktop": "node -e \"console.log('请用 desktop/ 目录：cd desktop && npm start')\"",
+    "dist": "npm --prefix desktop run dist",
+    "dist:dir": "npm --prefix desktop run dist:dir",
+    "check:docs": "node tools/check-docs.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {},
+  "keywords": [
+    "梅花易数",
+    "易经",
+    "卦象",
+    "divination",
+    "plum-blossom"
+  ],
+  "license": "MIT"
+}

@@ -649,6 +649,11 @@ async function askAssistant(text) {
 /** 「这一版更新了什么」：键就是 package.json 里的版本号。
  *  加新版本时在这里补一条——写给人看的大白话，别堆术语。 */
 const WHATS_NEW = {
+  '1.5.1': [
+    '修好了「点『下 载 新 版』却跳到浏览器」：现在桌面版**在程序里直接下载**，进度就地显示，下完存进系统「下载」文件夹，旁边给「打开安装包」与「打开所在文件夹」。',
+    '下载完成不会自动启动安装程序——装之前请先退出问心卦，再双击安装包。',
+    '网络不通下不来时，按钮会换成「用浏览器下载」，不至于无路可走。',
+  ],
   '1.5.0': [
     '新增一款「皮肤集」插件，带来四套成套皮肤：唐风宫苑（绢黄描金）、宋瓷汝窑（雨过天青）、竹影清舍（竹青素木）、星野玄穹（玄黑星野）。',
     '每套皮肤都自带宣纸与夜读两式——顶栏那枚「夜 读／宣 纸」按钮照旧管白天黑夜，皮肤在两种明暗下都可用。',
@@ -693,11 +698,85 @@ function hasNewerVersion(current, latest) {
 function updateBannerHtml(info) {
   const mb = info.size ? `（约 ${Math.round(info.size / 1048576)} MB）` : '';
   return `<span class="ub-ic">⬆</span>
-    <span>发现新版本 <b>v${h(info.latest)}</b>——点「下 载 新 版」直接下安装包${mb}，覆盖安装即可；不更新也不影响现在用。</span>
+    <span id="ub-text">发现新版本 <b>v${h(info.latest)}</b>——点「下 载 新 版」直接下安装包${mb}，覆盖安装即可；不更新也不影响现在用。</span>
     <span class="sp"></span>
-    <button class="btn sm primary" id="ub-go">下 载 新 版</button>
-    <button class="btn sm ghost" id="ub-page" title="打开发行页，看这一版改了什么">发 行 说 明</button>
-    <button class="btn sm ghost" id="ub-close" title="这次先不看（下次启动还会提示一次）">✕</button>`;
+    <span class="chips" id="ub-acts">
+      <button class="btn sm primary" id="ub-go">下 载 新 版</button>
+      <button class="btn sm ghost" id="ub-page" title="打开发行页，看这一版改了什么">发 行 说 明</button>
+      <button class="btn sm ghost" id="ub-close" title="这次先不看（下次启动还会提示一次）">✕</button>
+    </span>`;
+}
+
+/**
+ * 下载新版安装包。
+ *
+ * 桌面版走主进程的下载通道（`qxg:download-update`）：存到系统「下载」目录、进度就地显示。
+ * 上一版是 `window.open(资产直链)` —— 在桌面版里它会被主进程的 setWindowOpenHandler
+ * 接手、交给**系统浏览器**，于是用户点了之后程序毫无动静、浏览器跳出来才知道在下。
+ *
+ * 网页版（浏览器访问 127.0.0.1）没有那座桥，直接给 `<a download>` 直链——浏览器自己下载。
+ * 两条路都失败时留一个「用浏览器下载」的退路（有的网络环境直连 GitHub 不通）。
+ */
+function downloadUpdate(info, el) {
+  const bridge = window.__qxgDesktop;
+  const url = info.assetUrl || info.url;
+  const name = `问心卦-安装包-${info.latest}.exe`;
+  const text = el.querySelector('#ub-text');
+  const acts = el.querySelector('#ub-acts');
+  const say = (html) => { if (text) text.innerHTML = html; };
+
+  /* 退路：交给系统浏览器下载。桌面版显式走桥（openExternal），
+     网页版给一条 <a> 直链——两边都不必再经过「程序内下载」那条路。 */
+  const canOpenExternal = typeof bridge?.openExternal === 'function';
+  const browserFallback = (why) => {
+    say(`${why}　可改用浏览器下载：<b>v${h(info.latest)}</b> 的安装包（约 ${Math.round((info.size || 0) / 1048576) || '?'} MB）。`);
+    if (!acts) return;
+    acts.innerHTML = canOpenExternal
+      ? `<button class="btn sm primary" id="ub-browser">用浏览器下载</button>
+        <button class="btn sm ghost" id="ub-page2">发 行 说 明</button>
+        <button class="btn sm ghost" id="ub-close2">✕</button>`
+      : `<a class="btn sm primary" id="ub-browser" href="${attr(url)}" target="_blank" rel="noopener">用浏览器下载</a>
+        <button class="btn sm ghost" id="ub-page2">发 行 说 明</button>
+        <button class="btn sm ghost" id="ub-close2">✕</button>`;
+    acts.querySelector('#ub-browser')?.addEventListener('click', () => { if (canOpenExternal) bridge.openExternal(url); });
+    acts.querySelector('#ub-page2')?.addEventListener('click', () => window.open(info.url, '_blank', 'noopener'));
+    acts.querySelector('#ub-close2')?.addEventListener('click', () => el.classList.remove('on'));
+  };
+
+  if (!bridge?.downloadUpdate) { browserFallback(''); return; }
+
+  say(`正在下载 <b>v${h(info.latest)}</b> 的安装包…　0%`);
+  if (acts) {
+    acts.innerHTML = '<button class="btn sm ghost" id="ub-cancel-hint" disabled>下载中…</button>';
+  }
+  const off = bridge.onUpdateProgress?.((p) => {
+    if (p?.done) return;
+    const mbGot = p.received ? `（${(p.received / 1048576).toFixed(1)}${p.total ? ` / ${(p.total / 1048576).toFixed(1)}` : ''} MB）` : '';
+    say(`正在下载 <b>v${h(info.latest)}</b> 的安装包…　${p.pct || 0}%${mbGot}`);
+  });
+  bridge.downloadUpdate({ url, name }).then((r) => {
+    off?.();
+    if (r?.ok && r.filePath) {
+      const file = r.filePath.replace(/^.*[\\/]/, '');
+      say(`安装包已下载：<b>${h(file)}</b>　存于系统的「下载」文件夹。装之前请先退出问心卦，再双击安装。`);
+      if (acts) {
+        acts.innerHTML = `<button class="btn sm primary" id="ub-install">打开安装包</button>
+          <button class="btn sm ghost" id="ub-folder">打开所在文件夹</button>
+          <button class="btn sm ghost" id="ub-close3">✕</button>`;
+        acts.querySelector('#ub-install')?.addEventListener('click', async () => {
+          const x = await bridge.openPath(r.filePath, 'open');
+          if (x && x.ok === false) toast(`打不开：${x.error}`);
+        });
+        acts.querySelector('#ub-folder')?.addEventListener('click', () => bridge.openPath(r.filePath, 'folder'));
+        acts.querySelector('#ub-close3')?.addEventListener('click', () => el.classList.remove('on'));
+      }
+    } else {
+      browserFallback(`下载失败（${h(r?.error || '未知原因')}）。`);
+    }
+  }).catch((err) => {
+    off?.();
+    browserFallback(`下载失败（${h(err.message)}）。`);
+  });
 }
 
 /**
@@ -740,13 +819,15 @@ async function checkForUpdates() {
   if (!r?.latest || !hasNewerVersion(META?.app?.version || '', r.latest)) return;
   const el = document.getElementById('update-banner');
   if (!el) return;
-  const info = { latest: r.latest, url: r.url || UPDATE_REPO_URL, assetUrl: r.assetUrl || '', size: r.size || 0 };
+  const info = {
+    latest: r.latest, url: r.url || UPDATE_REPO_URL,
+    assetUrl: r.assetUrl || '', asset: r.asset || '', size: r.size || 0,
+  };
   el.innerHTML = updateBannerHtml(info);
   el.classList.add('on');
-  /* 打开方式与文档页外链同一条路：浏览器里新开标签；桌面版被主进程的
-     setWindowOpenHandler 接住，改用系统浏览器打开（见 desktop/main.mjs）。
-     没有资产直链（老发行版）时，主按钮退回发行页。 */
-  el.querySelector('#ub-go')?.addEventListener('click', () => window.open(info.assetUrl || info.url, '_blank', 'noopener'));
+  /* 主按钮：桌面版在程序里下载（不经浏览器，进度就地显示），网页版给直链。
+     详见 downloadUpdate() 的注释。没有资产直链（老发行版）时退回发行页。 */
+  el.querySelector('#ub-go')?.addEventListener('click', () => downloadUpdate(info, el));
   el.querySelector('#ub-page')?.addEventListener('click', () => window.open(info.url, '_blank', 'noopener'));
   el.querySelector('#ub-close')?.addEventListener('click', () => el.classList.remove('on'));
 }

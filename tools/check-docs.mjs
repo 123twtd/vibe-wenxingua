@@ -118,7 +118,7 @@ check('agent 工具数达到覆盖内部操作的水准', TOOLS >= 20, `${TOOLS}
 check('每个工具都登记了权限', Object.keys(tk.permissionMap()).length === TOOLS,
   `${Object.keys(tk.permissionMap()).length} 条权限登记 / ${TOOLS} 个工具`);
 check('REST 端点数 ≥ 37', ROUTES >= 37, `${ROUTES} 条`);
-check('IPC handler 6 个、preload 成员 8 个', IPC === 6 && PRELOAD_MEMBERS === 8, `${IPC} / ${PRELOAD_MEMBERS}`);
+check('IPC handler 9 个、preload 成员 12 个', IPC === 9 && PRELOAD_MEMBERS === 12, `${IPC} / ${PRELOAD_MEMBERS}`);
 check('MCP 协议 = 2024-11-05，方法 9，资源 3，提示 2',
   MCP_PROTO === '2024-11-05' && MCP_METHODS.size === 9 && MCP_RESOURCES === 3 && MCP_PROMPTS === 2,
   `${MCP_PROTO} / ${MCP_METHODS.size} / ${MCP_RESOURCES} / ${MCP_PROMPTS}`);
@@ -313,6 +313,25 @@ for (const [rel, t] of allText) {
 }
 claim('文档引用的源码文件都存在', missing.length === 0,
   missing.length ? `${missing.length} 处不存在：${missing.slice(0, 6).join('；')}` : '');
+
+/* 更新与下载的路径：检测在服务端（程序唯一的**自动**外呼），
+   下载在桌面版走主进程通道——不能退回 window.open（那会被 setWindowOpenHandler
+   交给系统浏览器，用户点了之后程序没动静，正是被问「不能直接获取下载吗」的原因）。
+   这条断言便宜，但少了它，一次随手重构就会把体验悄悄退回浏览器。 */
+{
+  const appSrcT = read('web/app.js');
+  const mainSrcT = desktopSrc;
+  const preloadT = preloadSrc;
+  claim('「下载新版」在桌面版走主进程通道、不交给浏览器',
+    appSrcT.includes("bridge.downloadUpdate({ url, name })")
+    && /ipcMain\.handle\('qxg:download-update'/.test(mainSrcT)
+    && /downloadUpdate: \(info\)/.test(preloadT)
+    && mainSrcT.includes('downloadURL(url)'),
+    '抢的是主进程下载通道（setSavePath + 进度事件）');
+  claim('下载失败留有「用浏览器下载」的退路',
+    appSrcT.includes('用浏览器下载') && appSrcT.includes('openExternal'),
+    '网络不通时不至于无路可走');
+}
 
 // 文档里提到的自检脚本是否真的存在
 const missingScripts = [];

@@ -519,6 +519,16 @@ async function main() {
     await probe('能响应主进程跳转指令',
       'window.__qxgDesktop.onNavigate(() => {}); return typeof window.__qxgDesktop.onNavigate === "function";', true);
 
+    /* 程序内下载安装包这组能力要在桥上：上一版点了「下 载 新 版」会被交给系统浏览器，
+       用户以为没反应（当场被问「不能直接获取并下载吗」）。真下载要 78MB、依赖网络，
+       自检不跑它——这里只保证桥齐备，路径本身由 check-docs 的源码断言守。 */
+    await probe('桌面桥带上了「程序内下载安装包」这组能力',
+      `const b = window.__qxgDesktop;
+       return { desktop: b.isDesktop, dl: typeof b.downloadUpdate, prog: typeof b.onUpdateProgress,
+                open: typeof b.openPath, ext: typeof b.openExternal };`,
+      (v) => v && v.desktop === true
+        && v.dl === 'function' && v.prog === 'function' && v.open === 'function' && v.ext === 'function');
+
     // 逐页跳一遍，确认桌面窗口里各页都能渲染。
     // 同样**轮询**而不是固定等待：每页都要取接口，冷启动时可能慢过固定值。
     for (const [hash, needle] of [['#/trend', '吉凶诸线'], ['#/cast', '起 卦 之 法'], ['#/agent', '模 型 设 置'], ['#/import', '卦 条 v1'], ['#/records', '吉凶不限']]) {
@@ -745,6 +755,73 @@ function registerIpc() {
     });
     if (r.response === 0) { electronApp.relaunch(); electronApp.exit(0); }
     return { ok: true, dataDir: filePaths[0] };
+  });
+
+  /* ---------- 4. 版本更新：在程序内下载安装包 ----------
+   * 上一版是 `window.open(资产直链)`，被 setWindowOpenHandler 接住交给系统浏览器——
+   * 用户点了之后程序没动静，浏览器跳出来才知道在下（当场被问「不能直接获取并下载吗」）。
+   * 这里改用 Electron 自己的下载通道：存到系统「下载」目录、不弹保存框、
+   * 进度经 qxg:update-progress 回报渲染进程。下载动作由用户点击触发，
+   * 与启动时的 update-check 不同——那一条仍是程序唯一的**自动**外呼。
+   */
+  ipcMain.handle('qxg:download-update', async (_e, payload) => {
+    const url = String(payload?.url || '');
+    // 只认 GitHub 的发行资产地址（下载安装包），免得这个口子被当成任意文件下载器
+    const allowed = /^https:\/\/([a-z0-9-]+\.)*(github\.com|githubusercontent\.com)\//i.test(url);
+    if (!allowed) return { ok: false, error: '下载地址不在允许范围内' };
+    const raw = String(payload?.name || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim() || 'wenxingua-setup.exe';
+    const dir = electronApp.getPath('downloads');
+    fs.mkdirSync(dir, { recursive: true });
+    const ext = path.extname(raw);
+    const stem = path.basename(raw, ext);
+    let target = path.join(dir, raw);
+    for (let i = 2; fs.existsSync(target); i += 1) target = path.join(dir, `${stem} (${i})${ext}`);
+
+    const ses = mainWindow.webContents.session;
+    return await new Promise((resolve) => {
+      const onWill = (_ev, item) => {
+        ses.removeListener('will-download', onWill);
+        item.setSavePath(target);
+        const push = (p) => { try { mainWindow?.webContents.send('qxg:update-progress', p); } catch { /* 窗口没了就算了 */ } };
+        item.on('updated', (_e2, state) => {
+          if (state !== 'progressing') return;
+          const total = item.getTotalBytes();
+          const got = item.getReceivedBytes();
+          push({ pct: total ? Math.min(99, Math.round((got / total) * 100)) : 0, received: got, total });
+        });
+        item.once('done', (_e2, state) => {
+          if (state === 'completed') {
+            log('新版安装包已下载', target);
+            push({ pct: 100, done: true, filePath: target });
+            resolve({ ok: true, filePath: target });
+          } else {
+            log('新版安装包下载失败', state);
+            push({ done: true, failed: state });
+            resolve({ ok: false, error: state === 'cancelled' ? '已取消' : `下载中断（${state}）` });
+          }
+        });
+      };
+      ses.on('will-download', onWill);
+      log('开始下载新版安装包', url);
+      mainWindow.webContents.downloadURL(url);
+    });
+  });
+
+  /** 打开一个本地路径：mode='folder' 在文件管理器里定位，否则用默认方式打开（安装包＝启动安装向导） */
+  ipcMain.handle('qxg:open-path', async (_e, payload) => {
+    const f = String(payload?.path || '');
+    if (!f || !fs.existsSync(f)) return { ok: false, error: '文件不存在，可能已被移走' };
+    if (payload?.mode === 'folder') { shell.showItemInFolder(f); return { ok: true }; }
+    const err = await shell.openPath(f);
+    return err ? { ok: false, error: err } : { ok: true };
+  });
+
+  /** 交给系统浏览器打开一个网址——下载失败时的退路（有些网络环境直连 GitHub 不通） */
+  ipcMain.handle('qxg:open-external', async (_e, url) => {
+    const u = String(url || '');
+    if (!/^https:\/\//i.test(u)) return { ok: false, error: '只允许 https 地址' };
+    await shell.openExternal(u);
+    return { ok: true };
   });
 }
 

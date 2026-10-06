@@ -38,4 +38,20 @@ contextBridge.exposeInMainWorld('__qxgDesktop', {
     ipcRenderer.on('qxg:navigate', h);
     return () => ipcRenderer.removeListener('qxg:navigate', h);
   },
+
+  /** 在程序里下载新版安装包（存到系统「下载」目录，不弹保存框）；进度见 onUpdateProgress */
+  downloadUpdate: (info) => ipcRenderer.invoke('qxg:download-update', info),
+
+  /** 订阅下载进度与结局（{ pct } / { done, filePath } / { done, failed }），返回取消订阅函数 */
+  onUpdateProgress: (fn) => {
+    const h = (_e, p) => fn(p);
+    ipcRenderer.on('qxg:update-progress', h);
+    return () => ipcRenderer.removeListener('qxg:update-progress', h);
+  },
+
+  /** 打开一个本地路径：mode='open' 打开它（安装包＝启动安装向导），mode='folder' 在文件管理器里定位 */
+  openPath: (p, mode = 'open') => ipcRenderer.invoke('qxg:open-path', { path: p, mode }),
+
+  /** 交给系统浏览器打开一个网址（下载不通时的退路） */
+  openExternal: (url) => ipcRenderer.invoke('qxg:open-external', url),
 });

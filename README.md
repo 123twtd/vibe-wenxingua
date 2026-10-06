@@ -46,7 +46,7 @@
 
 仓库里**不含安装包**（二进制不进 git，走 Releases）。两条路：
 
-- **直接下载**：[Releases · v1.5.0](https://github.com/123twtd/vibe-wenxingua/releases/latest) → `wenxingua-1.5.0-setup.exe`（约 78 MB，中文向导，双击安装）
+- **直接下载**：[Releases · v1.5.1](https://github.com/123twtd/vibe-wenxingua/releases/latest) → `wenxingua-1.5.1-setup.exe`（约 78 MB，中文向导，双击安装）
 - **自己打**，约两分钟：
 
 ```
@@ -116,7 +116,7 @@ node server/index.mjs --port 8080   # 换端口
   ┌──────────────────────────────────────────────┐
   │            问  心  卦   ·   卦录台            │
   └──────────────────────────────────────────────┘
-   版本      v1.5.0
+   版本      v1.5.1
    地址      http://127.0.0.1:19730/
    数据目录  …\问心卦\data
 ```
@@ -451,8 +451,8 @@ Claude Code / DSH（`.mcp.json`）：
 │  ├─ check-hermes.mjs     Hermes 协议/路由/策略自检（63 项，全离线）
 │  ├─ check-web.mjs        前端联调自检（122 项，连不上服务时自起示例服务）
 │  ├─ check-mcp.mjs        MCP stdio 自检（14 项）
-│  ├─ check-desktop.mjs    桌面版自检（53 项，真起 Electron 窗口）
-│  ├─ check-docs.mjs       文档与代码一致性（27 项）
+│  ├─ check-desktop.mjs    桌面版自检（54 项，真起 Electron 窗口）
+│  ├─ check-docs.mjs       文档与代码一致性自检（29 项）
 │  └─ check-validate.mjs   校验器负向测试（10 项）
 └─ data/                   ← 你的东西都在这里
    ├─ records/             一条卦录一个 JSON
@@ -589,14 +589,14 @@ node tools/check.mjs           # 内核：卦典/历法/起卦/断语/卦录/插
 node tools/check-hermes.mjs    # Hermes：四协议适配 + 路由 + 重试熔断（全离线）        （63 项）
 node tools/check-web.mjs       # 前端联调（连不上服务时自起示例服务）：逐条路由真跑一遍 （122 项）
 node tools/check-mcp.mjs       # MCP stdio 往返与 stdout 纯净性                      （14 项）
-node tools/check-desktop.mjs   # 桌面版：真起 Electron 窗口跑断言                     （53 项）
+node tools/check-desktop.mjs   # 桌面版：真起 Electron 窗口跑断言                     （54 项）
 node tools/check-docs.mjs      # 文档与代码一致性（项数、附录 B、ADR 编号）           （27 项）
 node tools/check-validate.mjs  # 校验器负向测试（改坏了必须报错）                     （10 项）
 node tools/validate.mjs        # 按 schema 校验全部卦录与会话
 npm run check:all              # 七套一起跑
 ```
 
-七套合计 **542 项**，当前全过；各套各验什么、以及它们实际抓出过哪些缺陷，见 **[测试与质量保证](docs/09-测试与质量保证.md)**。
+七套合计 **545 项**，当前全过；各套各验什么、以及它们实际抓出过哪些缺陷，见 **[测试与质量保证](docs/09-测试与质量保证.md)**。
 
 ---
 

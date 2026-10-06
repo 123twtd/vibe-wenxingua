@@ -202,6 +202,48 @@ try {
     check('非法注册不会留下路由', !host.matchRoute('GET', '/api/plugins/check-probe/skin/leaky.css'));
   }
 
+  /* ---- 随包示例插件的落地规则（server/seed.mjs）----
+     三条规矩各对应一次真出过的事故：
+       ① 新样例要送到——老用户升级拿不到新增示例插件（v1.5.0 的皮肤集就没送到）；
+       ② 用户删掉的不复活——删了又被塞回来，等于程序跟用户对着干；
+       ③ 用户改过的不覆盖——有人会照着示例改自己的插件。
+     纯函数 + 临时目录，直接跑三个场景。 */
+  {
+    const seedMod = await load('server/seed.mjs');
+    const mk = (files) => {
+      const d = fs.mkdtempSync(path.join(os.tmpdir(), 'qxg-seed-'));
+      for (const [name, body] of Object.entries(files)) fs.writeFileSync(path.join(d, name), body, 'utf8');
+      return d;
+    };
+    const read = (dir, name) => { try { return fs.readFileSync(path.join(dir, name), 'utf8'); } catch { return null; } };
+
+    // ① 升级新增：老用户目录里有旧样例（无清单），新的必须补进去
+    const seedA = mk({ 'old.mjs': 'A', 'new.mjs': 'B' });
+    const tgtA = mk({ 'old.mjs': 'A' });
+    const rA = seedMod.seedPlugins({ seedDir: seedA, targetDir: tgtA });
+    check('升级新增的示例插件会补进老数据目录（不再整段跳过）',
+      rA.seeded.join(',') === 'new.mjs' && read(tgtA, 'new.mjs') === 'B' && rA.existing.join(',') === 'old.mjs',
+      `补入 ${rA.seeded.join('、') || '（无）'}；原有 ${rA.existing.join('、') || '（无）'}`);
+
+    // ② 用户删掉的不复活：清单里记着、文件不在 → 不还原
+    fs.writeFileSync(path.join(tgtA, seedMod.SEED_MANIFEST),
+      JSON.stringify({ plugins: ['old.mjs', 'new.mjs'] }), 'utf8');
+    fs.rmSync(path.join(tgtA, 'new.mjs'));
+    const rB = seedMod.seedPlugins({ seedDir: seedA, targetDir: tgtA });
+    check('用户删掉的示例插件不会被塞回来',
+      rB.seeded.length === 0 && rB.keptRemoved.join(',') === 'new.mjs' && read(tgtA, 'new.mjs') === null,
+      `未还原 ${rB.keptRemoved.join('、') || '（无）'}`);
+
+    // ③ 用户改过的不覆盖
+    const seedC = mk({ 'mine.mjs': '原始' });
+    const tgtC = mk({ 'mine.mjs': '我改过的' });
+    seedMod.seedPlugins({ seedDir: seedC, targetDir: tgtC });
+    check('已存在的同名插件不被覆盖（可照示例改自己的）',
+      read(tgtC, 'mine.mjs') === '我改过的', '内容保持用户版本');
+
+    for (const d of [seedA, tgtA, seedC, tgtC]) fs.rmSync(d, { recursive: true, force: true });
+  }
+
   /* 插件可停用——这是使用者明确要的（「是插件就可以关闭和开启」）。
      用内存 config 起一个只装皮肤插件的宿主，断言停用后清单与路由一起消失；
      真实 data/config.json 只读不写。 */
@@ -1259,14 +1301,45 @@ console.log('\n【十四】小六壬');
   check('总览导出两种占法并列（方法列 + 三宫列）',
     rd2.toIndexMarkdown([rec1]).includes('小六壬') && rd2.toIndexMarkdown([rec1]).includes('速喜 → 大安 → 留连'));
 
-  // 卦条：拒收小六壬、导出不产可再导入的梅花卦条
-  const gtXlr = gt2.parseGuaTiao('# 卦条 v1\n时: 2026-10-06 12:30\n法: 小六壬报数\n数: 3\n');
-  check('卦条拒收小六壬，并说明去哪里起课',
-    gtXlr.ok === false && gtXlr.unsupported === 'xlr' && gtXlr.warnings[0].includes('起卦台'),
-    gtXlr.warnings[0]);
-  const notice = gt2.toGuaTiao(rec1);
-  check('小六壬导出卦条不产可再导入的梅花卦条',
-    !/^时:/m.test(notice) && gt2.parseGuaTiao(notice).ok === false);
+  /* 卦条 v1 的两个分支（ADR-0015）。
+     从前这里是「拒收小六壬」——v1.6.0 起改成认得并入库，往返一致。
+     分流只看「法」：写小六壬字样走 xlr 分支，不靠别的字段猜。 */
+  const gtXlr = gt2.parseGuaTiao('# 卦条 v1\n时: 2026-10-06 12:30\n法: 小六壬报数\n数: 3 5 2\n');
+  check('卦条认得小六壬并给出 xlr 分支（不再是「不支持」）',
+    gtXlr.ok === true && gtXlr.strategy === 'xlr' && gtXlr.fields.method === 'xlrNumbers'
+    && gtXlr.fields.numbers.join(',') === '3,5,2' && !gtXlr.unsupported,
+    `${gtXlr.fields.method}　数 ${gtXlr.fields.numbers.join(' ')}`);
+
+  const xlrTimeBlock = gt2.parseGuaTiao('# 卦条 v1\n时: 2026-03-14 21:00\n法: 小六壬月日时辰\n历: 公历\n');
+  check('月日时辰起课：认「历: 公历」、不写则按农历并说明',
+    xlrTimeBlock.ok && xlrTimeBlock.fields.calendarType === 'solar'
+    && gt2.parseGuaTiao('# 卦条 v1\n时: 2026-03-14 21:00\n法: 小六壬月日时辰\n').fields.calendarType === 'lunar',
+    `公历 → ${xlrTimeBlock.fields.calendarType}`);
+
+  const xlrNoNum = gt2.parseGuaTiao('# 卦条 v1\n时: 2026-10-06 12:30\n法: 小六壬报数\n');
+  check('报数起课缺「数」时报缺而不猜（沿用 ADR-0005 的口径）',
+    xlrNoNum.ok === false && xlrNoNum.missing.includes('报数'), `缺：${xlrNoNum.missing.join('、')}`);
+
+  const xlrClaimed = gt2.parseGuaTiao('# 卦条 v1\n时: 2026-10-06 12:30\n法: 小六壬报数\n数: 3 5 2\n三宫: 大安 留连 速喜\n');
+  check('写下的「三宫」进 claimed（只作对校，不当结果）',
+    xlrClaimed.claimed.palaces.join(' ') === '大安 留连 速喜' && xlrClaimed.palaceText === '大安 留连 速喜',
+    xlrClaimed.palaceText);
+
+  // 导出 → 再导入：小六壬现在也是**真卦条**，往返一致
+  const xlrSlip = gt2.toGuaTiao(rec1);
+  const xlrAgain = gt2.parseGuaTiao(xlrSlip);
+  check('小六壬导出是真卦条，且能再导入（往返一致）',
+    xlrAgain.ok === true && xlrAgain.strategy === 'xlr'
+    && xlrAgain.fields.method === rec1.cast.method
+    && xlrAgain.fields.numbers.join(',') === (rec1.cast.numbers || []).join(',')
+    && xlrAgain.claimed.palaces.join(' ') === rec1.chart.palaces.map((p) => p.name).join(' '),
+    `${xlrAgain.fields.method}　${xlrAgain.claimed.palaces?.join(' ') || ''}`);
+
+  // 两套模板都要能被自己解析（模板写错字，用户第一步就卡住）
+  check('两套模板各自都能被解析（梅花 / 小六壬）',
+    gt2.parseGuaTiao(gt2.template('meihua')).ok === true
+    && gt2.parseGuaTiao(gt2.template('xlr')).strategy === 'xlr',
+    'meihua / xlr');
 
   // schema 负例
   const badXlr = JSON.parse(JSON.stringify(rec1));

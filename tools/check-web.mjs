@@ -249,7 +249,8 @@ const ROUTES = [
   // 导入页把「录入流程」与「卦条规范」合成一处：解析框本身就是校验，
   // 所以模板、字段字典、版本迁移都在这一页，不再另开「格式」页（两处必然对不上）。
   ['#/import', '导入与格式', ['一 · 粘 贴 解 析', '解 析', '二 · 卦 条 v1', '三 · 字 段 字 典',
-    '四 · 卦 录 JSON', '五 · 命 令 行 与 Agent', '让 助 手 来 录', '载 入 到 粘 贴 框']],
+    '四 · 卦 录 JSON', '五 · 命 令 行 与 Agent', '让 助 手 来 录', '载 入 到 粘 贴 框',
+    '梅 花 易 数', '道 教 小 六 壬', '小六壬报数']],
   // 「助手」页只留配置：模型 / 联网 / 工具 / MCP。对话只长在右侧面板里，
   // 这一页不该再出现对话框——所以这里断言它**没有**对话面板。
   // 「单次回复上限」是防"半句话"的那个输入框：它在界面里必须存在，否则用户没法把截断调回来
@@ -257,7 +258,9 @@ const ROUTES = [
   // #/spec 是旧地址：桌面菜单与书签可能还指着它。规范已并进「导入」页，
   // 这一条验的是**转发到位**（旧地址仍落到同一份规范上，不是白屏也不是第四份实现）。
   ['#/spec', '格式·旧地址转发到导入', ['一 · 粘 贴 解 析', '二 · 卦 条 v1', '字 段 字 典']],
-  ['#/dian', '卦典', ['卦 典', '搜卦名']],
+  ['#/dian', '卦典（梅花栏）', ['卦 典', '搜卦名', '小 六 壬 六 宫']],
+  ['#/dian/xlr', '卦典·小六壬六宫', ['大安', '留连', '速喜', '赤口', '小吉', '空亡',
+    '六 宫 顺 序', '掌 诀', '怎 么 数', '与梅花易数的不同']],
   ['#/dian/49', '卦典·革', ['泽火革', '改命吉', '六 爻 爻 辞']],
   ['#/plugins', '插件', ['应期提醒', '卦气统计', '单卦 HTML 卡片', '写 一 个 插 件']],
   ['#/plugin/review-watch/due', '插件页·应期提醒', ['应期', '回 插 件 列 表']],
@@ -812,21 +815,30 @@ const junk = await (await fetch(`${BASE}/api/import/parse`, {
 })).json();
 check('无关文字不硬认', junk.count === 0, `候选 ${junk.count} 条`);
 
-// 小六壬文本：解析要拒收，**提交也要硬拦**——若放行，会被当成「一数＋时辰」猜出一个假卦，
-// 那正是「认不准就报缺、不许猜」明令禁止的。两关合并成一条断言。
+/* 小六壬卦条：v1.6.0 起**认得并入库**（从前是硬拦，见 ADR-0015）。
+   两件事一起验：解析走 xlr 分支（不当梅花卦猜），入库后的记录是三宫形态。
+   库里留下的一条会删掉——夹具服务无所谓，但万一连的是用户正在用的服务，
+   自检不该在他库里留东西（这条规矩在别处也守着）。 */
 {
-  const xlrText = '# 卦条 v1\n问: 小六壬用例\n时: 2026-10-06 12:30\n法: 小六壬报数\n数: 3 5 2\n';
+  const xlrText = '# 卦条 v1\n题: 自检小六壬\n问: 小六壬用例\n时: 2026-10-06 12:30\n法: 小六壬报数\n数: 3 5 2\n';
   const parsed = await (await fetch(`${BASE}/api/import/parse`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: xlrText }),
   })).json();
   const blk = parsed.blocks?.[0];
   const commit = await (await fetch(`${BASE}/api/import/commit`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ items: [{ block: blk }] }),
+    body: JSON.stringify({ items: [{ block: blk, overrides: { origin: { kind: 'test', label: '自检临时卦' } } }] }),
   })).json();
-  check('卦条里的六壬文本：解析标「不支持」、提交硬拦（不猜成梅花卦）',
-    blk?.unsupported === 'xlr' && (commit.created?.length || 0) === 0 && (commit.failed?.length || 0) === 1,
-    blk?.unsupported ? `unsupported=${blk.unsupported}；提交 ${commit.created?.length || 0} 入 / ${commit.failed?.length || 0} 拒` : '解析未标 unsupported');
+  const made = commit.created?.[0];
+  const detail = made?.id ? await (await fetch(`${BASE}/api/records/${encodeURIComponent(made.id)}`)).json() : null;
+  const palaces = (detail?.record?.chart?.palaces || []).map((p) => p.name);
+  const del = made?.id
+    ? await (await fetch(`${BASE}/api/records/${encodeURIComponent(made.id)}`, { method: 'DELETE' })).json()
+    : null;
+  check('小六壬卦条：解析走 xlr 分支、提交入库，三宫由引擎算出',
+    blk?.strategy === 'xlr' && blk?.fields?.method === 'xlrNumbers' && !blk?.unsupported
+    && !!made && detail?.record?.chart?.kind === 'xlr' && palaces.length === 3 && del?.ok === true,
+    blk ? `strategy=${blk.strategy}；入库 ${made ? '成功' : `失败（${commit.failed?.[0]?.error || '未知'}）`}；三宫 ${palaces.join('→') || '（无）'}` : '未解析出块');
 }
 
 console.log('\n【四】起卦与断语的完整往返');

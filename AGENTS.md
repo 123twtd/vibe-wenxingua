@@ -53,13 +53,13 @@ node server/index.mjs --open        # 起服务（默认 127.0.0.1:19730）
 node agent/mcp-server.mjs           # 起 MCP 服务（stdio，给外部 agent 用）
 cd desktop && npm start             # 起桌面版（Electron）
 
-node tools/check.mjs                # 内核自检（253 项，不需服务）
+node tools/check.mjs                # 内核自检（260 项，不需服务）
 node tools/check-validate.mjs       # 校验器负向测试（10 项）
 node tools/check-mcp.mjs            # MCP stdio 自检（14 项）
 node tools/check-hermes.mjs         # Hermes 协议/路由/策略自检（63 项，全离线）
 node tools/check-desktop.mjs        # 桌面版自检（54 项，真起 Electron 窗口）
-node tools/check-web.mjs            # 前端联调自检（122 项，连不上服务时自起示例服务）
-node tools/check-docs.mjs           # 文档与代码一致性（29 项）
+node tools/check-web.mjs            # 前端联调自检（123 项，连不上服务时自起示例服务）
+node tools/check-docs.mjs           # 文档与代码一致性（30 项）
 node tools/validate.mjs             # 按 schema 校验全部卦录与会话
 node tools/import.mjs --template    # 吐一份卦条模板
 npm run check:all                   # 七套一起跑
@@ -104,7 +104,7 @@ npm run check:all                   # 七套一起跑
 |---|---|---|
 | 一个功能插件 | 新增 `data/plugins/<id>.mjs`，导出 `{id,name,version,activate(ctx)}` | 不用重启，`POST /api/plugins/reload` 热载；`ctx` 上有 route/page/panel/exporter/on |
 | 一个新的走势领域 | `core/trend.mjs` 的 `DOMAINS` 加一项 | 量程必须是 `signed`(−100~100) 或 `percent`(0~100)，不要混 |
-| 一个新的起卦法 | `core/divination.mjs` 的 `METHODS` + `cast()` 分支 | 同时更新 `docs/规范.md` 与 `core/guaTiao.mjs` 的 `METHOD_NAMES`。若是小六壬这类**另一种占法**（不是梅花的新起卦法），还要同时定义 `chart.kind` 与 `reading` 形态，并同步 `schema/record.schema.json` 里 `chart`／`reading` 的 `oneOf` 双分支 |
+| 一个新的起卦法 | `core/divination.mjs` 的 `METHODS` + `cast()` 分支 | 同时更新 `docs/规范.md` 与 `core/guaTiao.mjs` 的 `METHOD_NAMES`。若是小六壬这类**另一种占法**（不是梅花的新起卦法），还要同时定义 `chart.kind` 与 `reading` 形态，并同步 `schema/record.schema.json` 里 `chart`／`reading` 的 `oneOf` 双分支；若该占法也要走卦条，还要同步 `core/guaTiao.mjs` 的卦条分支与**两套模板**、`schema/gua-tiao.schema.json` 的 `method` 枚举与 `claimed`（`palaces`／`final`），以及导入页的分栏文案 |
 | 断语措辞 | `core/verdict.mjs` 顶部的词库常量 | 保底要保留「七段」的顺序：主·互·变·断·宜·忌·应期，`check.mjs` 会验 |
 | 一种新导入格式 | `core/guaTiao.mjs` 加别名，或 `core/importer.mjs` 的 `parseMany` 加分支 | 认不准就报缺，**不许猜** |
 | 卦录结构升级 | `core/migrate.mjs`：`CURRENT_SCHEMA` +1，`MIGRATIONS` 加函数 | 同时改 `schema/record.schema.json` 与 `docs/规范.md` 的版本历史 |

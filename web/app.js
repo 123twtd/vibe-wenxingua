@@ -69,7 +69,11 @@ function parseHash() {
   if (a === 'settings') return b === 'help' && c
     ? { name: 'docs', params: { doc: decodeURIComponent(c) } }
     : { name: 'settings', params: {} };
-  if (a === 'dian') return b ? { name: 'dianDetail', params: { id: decodeURIComponent(b) } } : { name: 'dian', params: {} };
+  // #/dian/xlr 是卦典的第二栏（道教小六壬六宫）；其余 #/dian/<id> 仍是卦典详情
+  if (a === 'dian') {
+    if (b === 'xlr') return { name: 'dian', params: { tab: 'xlr' } };
+    return b ? { name: 'dianDetail', params: { id: decodeURIComponent(b) } } : { name: 'dian', params: {} };
+  }
   if (a === 'plugins') return { name: 'plugins', params: {} };
   if (a === 'plugin') return { name: 'pluginPage', params: { pid: b, pageId: c } };
   return { name: 'dashboard', params: {} };
@@ -649,6 +653,12 @@ async function askAssistant(text) {
 /** 「这一版更新了什么」：键就是 package.json 里的版本号。
  *  加新版本时在这里补一条——写给人看的大白话，别堆术语。 */
 const WHATS_NEW = {
+  '1.6.0': [
+    '小六壬有自己的一整套了。导入页的「卦条」下面分成两栏——梅花易数 / 道教小六壬，各有各的模板；把「法」写成「小六壬报数」或「小六壬月日时辰」，粘进去就能入库（从前会被拒收，让你去起卦台手点）。',
+    '卦典页顶部也分两栏：六十四卦之外多了「小六壬六宫」——掌诀环图、六宫的六神／五行／方位／神数／口诀与释义，以及一段「怎么数」的要旨。',
+    '三宫一律由程序从「数 + 时」重算；卦条里写下的「三宫／末宫」只用来对校，与重算不符会记进校勘。',
+    '小六壬卦录导出的卦条现在能再导入了（从前导出只是「文字存档」，再导入会报缺）。',
+  ],
   '1.5.1': [
     '修好了「点『下 载 新 版』却跳到浏览器」：现在桌面版**在程序里直接下载**，进度就地显示，下完存进系统「下载」文件夹，旁边给「打开安装包」与「打开所在文件夹」。',
     '下载完成不会自动启动安装程序——装之前请先退出问心卦，再双击安装包。',

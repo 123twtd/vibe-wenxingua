@@ -5,7 +5,7 @@
 | 标题 | 问心卦 · 接口控制文档（ICD） |
 | 版本 | 1.0 |
 | 状态 | 已发布 |
-| 适用产品版本 | v1.5.1 |
+| 适用产品版本 | v1.6.0 |
 | 最后更新 | 2026-10-07 |
 | 读者 | 接口责任人、插件作者、外部 agent 集成者、变更评审人、维护者 |
 | 关联文档 | [00-文档索引.md](00-文档索引.md)、[01-系统设计说明书.md](01-系统设计说明书.md)、[02-架构与框图.md](02-架构与框图.md)、[03-接口文档.md](03-接口文档.md)、[05-Agent设计文档.md](05-Agent设计文档.md)、[06-Hermes网关与路由设计.md](06-Hermes网关与路由设计.md)、[07-数据模型与存储设计.md](07-数据模型与存储设计.md)、[11-安全与隐私设计.md](11-安全与隐私设计.md)、[12-插件与扩展开发指南.md](12-插件与扩展开发指南.md)、[规范.md](规范.md) |
@@ -442,6 +442,8 @@
 | `claimed.ben` / `claimed.hu` / `claimed.bian` | string\|null | 卦名 | 原述本卦 / 互卦 / 变卦 |
 | `claimed.moving` | int\|null | 1–6 | 原述动爻 |
 | `claimed.tiyong` | string\|null | 任意文本 | 原述体用 |
+| `claimed.palaces` | string[]\|null | 数组，最多 3 项 | 小六壬：卦条里写下的「三宫」。**只作对校**——结果一律由引擎按「数＋时」重算，不符则记入校勘 |
+| `claimed.final` | string\|null | 六宫之一 | 小六壬：卦条里只写了「末宫」时记在这里，同样只作对校 |
 `additionalProperties: true`。**只填认得出的字段**——认不准就省略，免得被当成「原述」而误报校勘。出现接口：REST-004/005/009/012/013/022、MCP-005。
 
 ### 5.6 校勘结果 `corrections[]`
@@ -469,7 +471,7 @@
 | `source` | string | **是** | 常量 `gua-tiao` | 来源标识 |
 | `version` | int | **是** | 常量 `1` | 卦条格式版本 |
 | `confidence` | int | 否 | 0–100 | 识别度百分比 |
-| `strategy` | string | 否 | `hexagram`/`cast`/`incomplete` | 入库方式 |
+| `strategy` | string | 否 | `hexagram`/`cast`/`xlr` | 入库方式（指定本卦＋动爻／按报数＋时间重起／小六壬按「数＋时」重起三宫） |
 | `fields` | obj | **是** | 见下 | 归一后的字段 |
 | `fields.localTime` | string | **是** | 空串或 `YYYY-MM-DD HH:mm` | 起卦时间；缺失时为空串并进 `missing` |
 | `fields.placeName` | string | 否 | 任意 | 地点名 |
@@ -478,7 +480,7 @@
 | `fields.numbers` | int[] | **是** | 每项 ≥1 | 报数（空数组表示未给） |
 | `fields.question` / `fields.category` | string | 否 | 任意 / 8 类或空串 | 所问 / 类别 |
 | `fields.notes` | string[] | 否 | — | 备注 |
-| `fields.method` | string | **是** | 4 种起卦法 | 起卦法 |
+| `fields.method` | string | **是** | 6 种起卦法（梅花四种 `numberAndTime`／`twoNumbers`／`timeOnly`／`manual` ＋小六壬两种 `xlrNumbers`／`xlrTime`），分流只看卦条的「法」那一行 | 起卦法 |
 | `fields.movingFrom` | string | 否 | `sum`/`number` | **只在卦条明写「动爻取法」时才出现** |
 | `fields.timeRaw` | string | 否 | 任意 | 仅对话文本路径有 |
 | `claimed` | obj | **是** | 见 5.5 | 卦条里写的卦 |
@@ -527,7 +529,7 @@
 | `category` | string | 否 | 8 类枚举 | — | 类别 | `cast`、`save_record`、`list_records`、`update_record` |
 | `title` / `narrative` ／ `tags` | string ／ string[] | 否 ／ 否 | 任意 ／ 任意 | — ／ — | 标题 / 原文 ／ 标签 | `save_record`、`update_record` ／ `save_record`、`update_record` |
 | `background` / `plan` / `collation` / `qa` | string | 否 | 任意 | — | 补充存录：背景／方案／人工校勘／原文问答 | `save_record`、`update_record` |
-| `claimed` | obj | 否 | `{ben,hu,bian,moving,tiyong}`，`additionalProperties: true` | — | 原述之卦 | `save_record` |
+| `claimed` | obj | 否 | `{ben,hu,bian,moving,tiyong,palaces,final}`，`additionalProperties: true` | — | 原述之卦（`palaces` 为小六壬三宫，最多 3 项，与 `final` 均只作对校） | `save_record` |
 | `text` | string | 视工具 | 任意 | — | 待解析文本 | `save_gua_tiao`、`parse_import` |
 | `id` | string | 视工具 | 卦录 id | — | 目标卦录 | `get_record`、`update_record`、`update_review` |
 | `q` | string | 否 | 任意 | — | 关键词 | `list_records` |
@@ -587,7 +589,7 @@
 | `manual` | 梅花易数 | 已知卦象 | 本卦 + 动 | 互卦、变卦、体用由引擎推算 |
 | `xlrNumbers` | 道教小六壬 | 报数起课 | 数(1–3) + 时 | 自大安起顺数，每落一宫下一数自该宫续数；三宫全显，末宫为主断 |
 | `xlrTime` | 道教小六壬 | 月日时辰起课 | 时（＋`calendarType`） | 大安起月、月上起日、日上起时；月与日按农历（默认，闰月按本月计）或公历 |
-`METHOD_NAMES` 是**卦条**用的梅花方法别名表，另接受中文别名：`一数一时辰`、`一数加时辰`、`数与时` → `numberAndTime`；`两数`、`两数起卦` → `twoNumbers`；`年月日时` → `timeOnly`；`已知卦象`、`指定本卦` → `manual`。小六壬没有卦条格式，其方法中文名见 `core/xiaoliuren.mjs` 的 `XLR_LABELS`（`xlrNumbers`＝「小六壬 · 报数起课」、`xlrTime`＝「小六壬 · 月日时辰起课」）。
+`METHOD_NAMES` 是**卦条**用的梅花方法别名表，另接受中文别名：`一数一时辰`、`一数加时辰`、`数与时` → `numberAndTime`；`两数`、`两数起卦` → `twoNumbers`；`年月日时` → `timeOnly`；`已知卦象`、`指定本卦` → `manual`。小六壬也有自己的卦条分支（`core/guaTiao.mjs` 的 `parseXlrBlock`，v1.6.0 起）：`法` 写「小六壬报数」走 `xlrNumbers`、「小六壬月日时辰」走 `xlrTime`，两法各一套模板（`GET /api/spec` 的 `guaTiao.template`／`guaTiao.templateXlr`）；其方法中文名见 `core/xiaoliuren.mjs` 的 `XLR_LABELS`（`xlrNumbers`＝「小六壬 · 报数起课」、`xlrTime`＝「小六壬 · 月日时辰起课」）。
 
 ### 6.6 动爻取法 `movingFrom`（3）
 | 取值 | 语义 | 默认 |

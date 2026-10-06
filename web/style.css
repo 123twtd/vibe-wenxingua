@@ -900,6 +900,27 @@ body.agent-open .app { padding-right: var(--panel-w); }
 }
 
 /* ============================================================
+   十三·B、小六壬卦典（掌诀环图 + 六宫卡）
+   ------------------------------------------------------------
+   六宫依掌诀环列，所以用一张环形图把「顺序」画出来——顺序是这一套占法的
+   关键（数到空亡再往下回到大安），文字说明容易看漏。纯 CSS 排布，零外部资源。
+   ========================================================== */
+.xlr-wrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.xlr-ring {
+  position: relative; width: 178px; height: 178px; flex: none;
+  border-radius: 50%; border: 1px dashed var(--rule-2); background: var(--tint-1);
+}
+.xlr-node {
+  position: absolute; left: 50%; top: 50%; width: 48px; height: 20px;
+  margin: -10px 0 0 -24px; text-align: center;
+  font-size: 11.5px; letter-spacing: 1px; color: var(--ink-2);
+}
+.xlr-hub {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  font-size: 11px; letter-spacing: 2px; color: var(--accent);
+}
+
+/* ============================================================
    十四、设置页
    ========================================================== */
 .perm {

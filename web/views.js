@@ -41,6 +41,17 @@ async function hexagrams() {
 
 const TONE_ORDER = { 大吉: 0, 吉: 1, 中吉: 2, 平: 3, 小凶: 4, 凶: 5 };
 
+/** 数据目录落点（meta.app.dataMode）怎么念给人听。
+ *  桌面版一律经 QXG_DATA_DIR 传目录，所以服务端还额外收到 QXG_DATA_MODE
+ *  ——否则安装态会被念成「项目目录（开发态）」。 */
+const DATA_MODE_TEXT = {
+  env: '环境变量指定',
+  portable: '代码目录（便携）',
+  appdata: '用户目录（安装态）',
+  chosen: '自选目录',
+  dev: '项目目录（开发态）',
+};
+
 /** 起卦法 id → 中文名（从 meta.methods 现取，不另写一份） */
 const methodLabelOf = (meta, id) => (meta?.methods || []).find((m) => m.id === id)?.label || id || '';
 
@@ -982,7 +993,8 @@ export const importDesk = {
           <button class="btn sm" id="i-ask" title="把这段交给助手，让它整理成卦条并逐条核对">✦ 让 助 手 来 录</button>
         </div>
         <div class="hint" style="margin-top:8px">解析原则：宁可少认，不可错认。认不准的会标红，原文一律整段存录，复核后即可入库。<br>
-          注意：卦条 v1 只描述梅花易数；小六壬三宫之课请到「起卦台」起课（本页解析器不会把它当梅花卦认）。</div>
+          两种占法都认：梅花的卦条按「本卦＋动爻」或「数＋动」，小六壬的课按「法: 小六壬报数／月日时辰」分流——判据只看「法」，
+          不会把小六壬硬认成梅花卦。三宫一律由程序从「数 + 时」重算。</div>
       </div>
 
       <div id="i-result"></div>
@@ -992,7 +1004,11 @@ export const importDesk = {
         <div class="small muted" style="margin-bottom:8px">
           一行一个字段的纯文本，人三十秒能写完，脚本能生成，AI 能照着写。多条用一行
           <span class="mono">---</span> 分隔；字段名可用中文全称或简写，见下面的字段字典。
-          认不准的会报缺，不会瞎猜。
+          认不准的会报缺，不会瞎猜。<b>两法各一套模板</b>——分流只看「法」那一行。
+        </div>
+        <div class="seg" id="i-tpl-switch" style="margin-bottom:7px">
+          <button data-tpl="meihua" class="on">梅 花 易 数</button>
+          <button data-tpl="xlr">道 教 小 六 壬</button>
         </div>
         <pre class="md-code" id="i-template"><code>${h(spec.guaTiao.template)}</code></pre>
         <div class="chips">
@@ -1234,18 +1250,27 @@ node tools/validate.mjs 我的卦条.txt                # 只校验这个文件
           box.innerHTML = '';
         });
 
-        // —— 卦条模板：复制 / 载入到粘贴框 / 下载，三个入口都只对着上面那个粘贴框 ——
+        // —— 卦条模板：两法各一套，复制 / 载入 / 下载都对着当前选中的那一套 ——
+        // 模板由 core 生成（/api/spec 下发），界面不硬编码；换栏只换展示与「当前模板」。
         const ta = root.querySelector('#i-text');
+        const tplPre = root.querySelector('#i-template');
+        let tpl = spec.guaTiao.template;              // 默认梅花
+        const tplOf = (kind) => (kind === 'xlr' ? (spec.guaTiao.templateXlr || '') : spec.guaTiao.template);
+        root.querySelectorAll('#i-tpl-switch button').forEach((b) => b.addEventListener('click', () => {
+          root.querySelectorAll('#i-tpl-switch button').forEach((x) => x.classList.toggle('on', x === b));
+          tpl = tplOf(b.dataset.tpl);
+          tplPre.innerHTML = `<code>${h(tpl)}</code>`;
+        }));
         root.querySelector('#i-tpl-copy').addEventListener('click', async () => {
-          await navigator.clipboard.writeText(spec.guaTiao.template);
+          await navigator.clipboard.writeText(tpl);
           toast('模板已复制');
         });
         root.querySelector('#i-tpl-load').addEventListener('click', () => {
-          ta.value = spec.guaTiao.template;
+          ta.value = tpl;
           toast('已载入粘贴框，照着自己的情况改');
         });
         root.querySelector('#i-tpl-download').addEventListener('click', () => {
-          const blob = new Blob([spec.guaTiao.template], { type: 'text/plain;charset=utf-8' });
+          const blob = new Blob([tpl], { type: 'text/plain;charset=utf-8' });
           const a = document.createElement('a');
           a.href = URL.createObjectURL(blob);
           a.download = '卦条-模板.txt';
@@ -1271,8 +1296,68 @@ node tools/validate.mjs 我的卦条.txt                # 只校验这个文件
  * ========================================================== */
 export const dian = {
   title: '卦 典',
-  desc: '六十四卦全表：卦辞、大象、卦德、六爻爻辞。写作与断语皆可取材于此。',
+  desc: '两套知识各占一栏：梅花易数六十四卦（卦辞、大象、卦德、六爻爻辞）与道教小六壬六宫（六神、五行、方位、神数、口诀、吉凶）。',
   async render(ctx) {
+    const tab = ctx.params?.tab === 'xlr' ? 'xlr' : 'meihua';
+    const seg = `<div class="seg" style="margin-bottom:8px">
+      <button data-tab="meihua" class="${tab === 'meihua' ? 'on' : ''}">梅 花 六 十 四 卦</button>
+      <button data-tab="xlr" class="${tab === 'xlr' ? 'on' : ''}">小 六 壬 六 宫</button>
+    </div>`;
+    const wireSeg = (root) => {
+      root.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+        ctx.navigate(b.dataset.tab === 'xlr' ? '#/dian/xlr' : '#/dian');
+      }));
+    };
+
+    if (tab === 'xlr') {
+      const data = await api.get('/api/knowledge/xlr');
+      const gradeCls = (g) => (g?.tone === 'good' ? 'good' : g?.tone === 'bad' ? 'bad' : 'warn');
+      const ring = `<div class="xlr-ring">${data.guide.order.map((name, i) => {
+        const deg = i * 60 - 90;
+        return `<span class="xlr-node" style="${attr(`transform:rotate(${deg}deg) translate(74px) rotate(${-deg}deg)`)}">${h(name)}</span>`;
+      }).join('')}<span class="xlr-hub">掌 诀</span></div>`;
+      return {
+        html: `
+          ${seg}
+          <div class="card">
+            <div class="card-title">六 宫 顺 序</div>
+            <div class="xlr-wrap">${ring}
+              <div class="small muted" style="flex:1;min-width:240px">
+                六宫依掌诀环列，循环不绝。报数起课自大安起顺数，有几数显几宫、末宫为主断；
+                月日时辰起课按「大安起月 → 月上起日 → 日上起时」三宫顺数。${h(data.guide.items[3].text)}
+              </div>
+            </div>
+          </div>
+          <div class="grid c3">${data.palaces.map((p) => `
+            <div class="card tight">
+              <div class="chips" style="justify-content:space-between">
+                <span style="font-size:19px;letter-spacing:3px">${h(p.name)}</span>
+                <span class="tag ${gradeCls(p.grade)}">${h(p.grade?.label || '')}</span>
+              </div>
+              <div class="small dim" style="margin:3px 0 6px">
+                ${h(p.deity)}　${h(p.element)}　方位${h(p.direction)}　${h(p.zhi)}位　神数 ${h(p.spiritText)}
+              </div>
+              <div class="small" style="line-height:1.75">${h(p.meaning)}</div>
+              <div class="classic" style="margin-top:6px"><div class="t">${h(p.koujue)}</div><span class="s">六宫口诀</span></div>
+              <div class="small dim" style="margin-top:4px">${h(p.yi)}</div>
+              <div class="small dim">${h(p.ji)}</div>
+            </div>`).join('')}</div>
+          <div class="card">
+            <div class="card-title">怎 么 数</div>
+            ${data.guide.items.map((it) => `
+              <div class="tone-item"><div class="lb">${h(it.title)}</div><div class="tx">${h(it.text)}</div></div>`).join('')}
+            <div class="chips" style="margin-top:10px">
+              <button class="btn sm" data-go="#/cast">到 起 卦 台 起 一 课</button>
+              <button class="btn sm ghost" data-go="#/import">看 小 六 壬 卦 条 模 板</button>
+            </div>
+          </div>`,
+        mount(root) {
+          wireSeg(root);
+          root.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => ctx.navigate(b.dataset.go)));
+        },
+      };
+    }
+
     const hexes = await hexagrams();
     const state = { q: '' };
     const list = (q) => hexes.filter((x) => !q
@@ -1280,9 +1365,11 @@ export const dian = {
 
     return {
       html: `
+        ${seg}
         <div class="card tight"><input type="text" id="d-q" placeholder="搜卦名、卦序、卦德，如 革 / 49 / 改命"></div>
         <div id="d-grid"></div>`,
       mount(root) {
+        wireSeg(root);
         const grid = document.createElement('div');
         root.querySelector('#d-grid').replaceWith(grid);
         const paint = (q) => {
@@ -2065,7 +2152,7 @@ export const settingsView = {
         <div class="card-title">数 据</div>
         <dl class="kv">
           <dt>数据目录</dt><dd class="mono small" style="word-break:break-all">${h((META_APP || {}).dataDir || '')}</dd>
-          <dt>位置类型</dt><dd>${h(((META_APP || {}).dataMode) === 'appdata' ? '用户目录（安装态）' : '项目目录（开发态）')}</dd>
+          <dt>位置类型</dt><dd>${h(DATA_MODE_TEXT[(META_APP || {}).dataMode] || (META_APP || {}).dataMode || '')}</dd>
           <dt>卦录</dt><dd>${(META_COUNTS || {}).total ?? '?'} 条</dd>
         </dl>
         <div class="chips" style="margin-top:8px">

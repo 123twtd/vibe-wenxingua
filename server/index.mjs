@@ -17,6 +17,7 @@ import { execFile } from 'node:child_process';
 import { Store } from './store.mjs';
 import { ChatStore, CHAT_SCHEMA } from './chatStore.mjs';
 import { PluginHost } from './plugins.mjs';
+import { seedPlugins } from './seed.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -79,7 +80,8 @@ const CODE_ROOT = path.resolve(HERE, '..');
 
 function resolveDataDir() {
   const env = process.env.QXG_DATA_DIR;
-  if (env) return { dir: path.resolve(env), mode: 'env' };
+  // 桌面版外壳自己选好了目录（并告诉我们属于哪种落点），照它说的算
+  if (env) return { dir: path.resolve(env), mode: process.env.QXG_DATA_MODE || 'env' };
 
   const portable = path.join(CODE_ROOT, 'data');
   try {
@@ -97,24 +99,27 @@ function resolveDataDir() {
   return { dir, mode: 'appdata' };
 }
 
-/** 首次落到用户目录时，把随包的初始卦录带进去 */
+/**
+ * 落到用户目录时，把随包的示例插件补进去。
+ * 规则见 server/seed.mjs：新样例要送到、用户删掉的不复活、用户改过的不覆盖。
+ * **卦录不在随包范围内**，所以这里不碰 records/（那是用户的东西）。
+ */
 function seedDataInto(targetDir) {
   try {
-    const target = path.join(targetDir, 'records');
-    const hasAny = fs.existsSync(target) && fs.readdirSync(target).some((f) => f.endsWith('.json'));
-    if (hasAny) return;
-    const seed = path.join(CODE_ROOT, 'seed-data');
-    if (!fs.existsSync(seed)) return;
-    fs.cpSync(seed, targetDir, { recursive: true });
-    console.log(`[store] 已把随包的初始卦录复制到 ${targetDir}`);
+    const r = seedPlugins({
+      seedDir: path.join(CODE_ROOT, 'seed-data', 'plugins'),
+      targetDir: path.join(targetDir, 'plugins'),
+    });
+    if (r.seeded.length) console.log(`[store] 已补入随包示例插件：${r.seeded.join('、')}`);
   } catch (err) {
-    console.warn(`[store] 复制初始卦录失败（不影响启动）：${err.message}`);
+    console.warn(`[store] 补入示例插件失败（不影响启动）：${err.message}`);
   }
 }
 
 const DATA = resolveDataDir();
 const dataDir = DATA.dir;
-/** 'env' | 'portable' | 'appdata' —— 桌面版与界面用它说明「数据存在哪」 */
+/** 'env' | 'portable' | 'appdata' | 'chosen' | 'dev' —— 界面用它说明「数据存在哪」。
+ *  后两个由桌面版外壳经 QXG_DATA_MODE 告进来（用户自选目录／开发态项目目录）。 */
 export const DATA_MODE = DATA.mode;
 
 const store = new Store(dataDir, { migrator: core.migrate.migrate });
@@ -679,15 +684,6 @@ route('POST', '/api/import/commit', async (req, res) => {
       try {
         const b = item.block || item;
         const ov = item.overrides || {};
-        // 解析器认出的「不支持」（小六壬）是**硬拦**：没有哪一项 override 能把它变成梅花卦，
-        // 若放行就会被当成「一数＋时辰」猜出一个假卦——那是「不许猜」明令禁止的。
-        if (b.unsupported) {
-          failed.push({
-            item: b.unsupported === 'xlr' ? '小六壬' : b.unsupported,
-            error: '卦条 v1 只描述梅花易数；小六壬请到「起卦台」起课（本页不会把它当梅花卦认）。',
-          });
-          continue;
-        }
         const localTime = ov.localTime || b.fields?.localTime;
         const useHex = (ov.hexagram || b.claimed?.ben) && (ov.movingPosition || b.claimed?.moving);
         const base = {
@@ -706,7 +702,19 @@ route('POST', '/api/import/commit', async (req, res) => {
           review: ov.review || undefined,
         };
         let rec;
-        if (ov.forceCast || (!useHex && !ov.forceHexagram)) {
+        if (b.strategy === 'xlr') {
+          // 小六壬之课：三宫由引擎按「数＋时」重算（卦条里写的三宫只作对校，见 ADR-0015）
+          rec = newRecordFromBody({
+            ...base, mode: 'cast',
+            method: b.fields.method,
+            numbers: b.fields.numbers,
+            calendarType: b.fields.calendarType,
+            localTime,
+            longitude: ov.longitude ?? b.fields?.longitude,
+            placeName: ov.placeName || b.fields?.placeName,
+            useTrueSolarTime: ov.useTrueSolarTime ?? b.fields?.useTrueSolarTime,
+          });
+        } else if (ov.forceCast || (!useHex && !ov.forceHexagram)) {
           rec = newRecordFromBody({
             ...base, mode: 'cast',
             method: ov.method || 'numberAndTime',
@@ -748,6 +756,17 @@ route('GET', '/api/knowledge/hexagrams', (req, res, url) => {
   let items = lib.all();
   if (q) items = items.filter((h) => `${h.id}${h.name}${h.fullName}${(h.keywords || []).join('')}`.includes(q));
   json(res, { ok: true, total: items.length, items });
+});
+
+/* 小六壬六宫与起课要旨：卦典页「小六壬六宫」那一栏的数据源。
+   与 knowledge/hexagrams 并列——两套知识、两个端点，界面按占法分栏。 */
+route('GET', '/api/knowledge/xlr', (req, res) => {
+  json(res, {
+    ok: true,
+    palaces: core.xiaoliuren.XLR_PALACES,
+    methods: core.xiaoliuren.XLR_METHODS,
+    guide: core.xiaoliuren.XLR_GUIDE,
+  });
 });
 
 route('GET', '/api/knowledge/hexagrams/:id', (req, res, url, params) => {
@@ -846,7 +865,9 @@ route('GET', '/api/spec', (req, res) => json(res, {
     guaTiao: {
       version: core.guaTiao.GUATIAO_VERSION,
       header: core.guaTiao.HEADER,
-      template: core.guaTiao.template(),
+      template: core.guaTiao.template('meihua'),
+      // 小六壬那一套模板：两法各一份，界面分栏展示（ADR-0015 第 6 条）
+      templateXlr: core.guaTiao.template('xlr'),
       fieldAliases: core.guaTiao.FIELD_ALIASES,
       methodNames: core.guaTiao.METHOD_NAMES,
       methodLabels: core.guaTiao.METHOD_LABELS,

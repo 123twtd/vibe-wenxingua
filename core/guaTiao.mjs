@@ -28,10 +28,24 @@
  *     2026-12-25 复试名单出了         之后是追记；程序只追加、不改写。
  *
  * 多条卦条：用一行 `---` 分隔。
+ *
+ * ── 小六壬之课（同一份格式的另一个分支，v1.6.0 起）──────
+ * 分流只看「法」：写「小六壬报数」或「小六壬月日时辰」就走小六壬分支，
+ * 两法的必填完全不同，不需要靠别的字段猜。
+ *
+ *   法: 小六壬报数                 ← 报数起课：数（1–3 个）＋ 时
+ *   数: 3 5 2
+ *   法: 小六壬月日时辰              ← 月日时辰起课：时（月与日由时推出）＋ 历
+ *   历: 农历                      ← 农历（默认）｜公历；闰月按本月计
+ *
+ * 三宫**一律由引擎从「数 + 时」重算**；卦条里写了的「三宫／末宫」只用来对校，
+ * 与重算不符就记进校勘（与梅花写「互卦／变卦」同一条规矩，见 ADR-0015）。
+ * 公共字段（题／问／类／背景／签／标签／复盘／复盘条目／问答／原文／方案／校勘）
+ * 两法共用同一套键与别名。
  * ────────────────────────────────────────────────────────
  */
 
-import { isXlrChart, XLR_LABELS } from './xiaoliuren.mjs';
+import { isXlrChart, XLR_LABELS, XLR_PALACE_NAMES } from './xiaoliuren.mjs';
 
 export const GUATIAO_VERSION = 1;
 export const HEADER = '# 卦条 v1';
@@ -49,6 +63,10 @@ export const FIELD_ALIASES = {
   useTrueSolarTime: ['真太阳时', '真太阳', 'truesolar'],
   method: ['法', '起卦法', '方法', 'method'],
   numbers: ['数', '报数', '数字', 'numbers'],
+  // 小六壬专用：月日时辰起课按农历还是公历；三宫／末宫只作对校（ADR-0015）
+  calendar: ['历', '历法', 'calendar'],
+  palaces: ['三宫', '宫', 'palaces'],
+  final: ['末宫', '结果宫', 'final'],
   movingFrom: ['动爻取法', 'movingfrom'],
   hexagram: ['本卦', '卦', 'hexagram', 'ben'],
   movingPosition: ['动', '动爻', 'moving'],
@@ -267,47 +285,11 @@ export function parseGuaTiao(text) {
   const localTime = values.localTime ? normalizeTime(values.localTime) : '';
   const methodRaw = values.method ? values.method.replace(/\s/g, '') : '';
 
-  // 卦条 v1 只描述梅花易数。小六壬没有本卦与动爻，若硬按信息推断，会被记成另一卦——
-  // 那是「猜」，不是识别。所以认出「法」里的小六壬字样就明确报不支持，请用户到起卦台。
+  // 小六壬分支：分流只看「法」（v1.6.0 起，见 ADR-0015）。
+  // 从前这里是一句「不支持」的拒收——那是导入层与其余各处（列表、详情、导出、助手工具、
+  // schema 双分支）的不对称。现在两法各有各的必填，判据清楚，不需要猜。
   if (/小六壬|六壬|xlr|报数起课|月日时辰起课|三数起课/i.test(methodRaw)) {
-    return {
-      ok: false,
-      source: 'gua-tiao',
-      version: GUATIAO_VERSION,
-      confidence: 0,
-      strategy: 'unsupported',
-      unsupported: 'xlr',
-      fields: {
-        localTime,
-        placeName: values.placeName || '',
-        longitude: values.longitude !== undefined && values.longitude !== '' ? Number(values.longitude) : null,
-        latitude: values.latitude !== undefined && values.latitude !== '' ? Number(values.latitude) : null,
-        useTrueSolarTime: values.useTrueSolarTime !== undefined ? (parseBool(values.useTrueSolarTime) ?? true) : true,
-        numbers: [],
-        question: values.question || '',
-        category: values.category || '',
-        notes: [],
-        method: 'xlr',
-      },
-      claimed: {},
-      signature: values.signature || '',
-      tags: [],
-      review: { status: values.status || '待应验', log: [] },
-      title: values.title || '',
-      hexagramText: '',
-      movingText: '',
-      tiyongText: '',
-      detected: { times: [], numbers: [], hexagrams: [], places: [] },
-      warnings: ['卦条 v1 只描述梅花易数；小六壬三宫之课请到「起卦台」起课，或让助手用 cast／save_record 录入。'],
-      unknownKeys: [],
-      hints: [],
-      missing: ['小六壬起课（卦条 v1 不支持）'],
-      narrative: blockValues.narrative || values.narrative || '',
-      background: blockValues.background || values.background || '',
-      plan: blockValues.plan || values.plan || '',
-      collation: blockValues.collation || values.collation || '',
-      qa: blockValues.qa || values.qa || '',
-    };
+    return parseXlrBlock({ values, blockValues, methodRaw, localTime, useTrueSolarTimeOf: (v) => (parseBool(v) ?? true) });
   }
 
   let method = METHOD_NAMES[methodRaw] || methodRaw || '';
@@ -421,6 +403,123 @@ export function parseGuaTiao(text) {
   return block;
 }
 
+/**
+ * 「法」里认出小六壬时走这里（ADR-0015）。
+ * 两法的必填完全不同，所以分流只看「法」，不必从别的字段猜：
+ *   报数起课（xlrNumbers）：数（1–3 个）＋ 时
+ *   月日时辰起课（xlrTime）：时（月与日由时推出）＋ 历（默认农历）
+ * 「三宫／末宫」只作对校——结果一律由引擎重算。
+ */
+function parseXlrBlock({ values, blockValues, methodRaw, localTime, useTrueSolarTimeOf }) {
+  const warnings = [];
+  const hints = [];
+
+  let method = '';
+  if (/报数|三数|数字起课|xlrnumbers/i.test(methodRaw)) method = 'xlrNumbers';
+  else if (/月日时|时辰起课|xlrtime/i.test(methodRaw)) method = 'xlrTime';
+
+  const allNumbers = values.numbers
+    ? String(values.numbers).split(/[\s,，、/]+/).map(Number).filter((n) => Number.isFinite(n) && n > 0)
+    : [];
+  if (!method) {
+    method = allNumbers.length ? 'xlrNumbers' : 'xlrTime';
+    warnings.push(`「法」没写清是哪种小六壬起课，已按所给信息推断为「${XLR_LABELS[method] || method}」。`);
+  }
+  if (method === 'xlrNumbers' && allNumbers.length > 3) {
+    warnings.push(`报数起课最多三个数，多出的已略去：${allNumbers.slice(3).join(' ')}`);
+  }
+  const numbers = method === 'xlrNumbers' ? allNumbers.slice(0, 3) : [];
+
+  // 「历」只对月日时辰起课有意义。不写按农历——那是有明确默认值的口径，不是猜，但要说出来。
+  let calendarType = '';
+  const calRaw = String(values.calendar || '').trim();
+  if (method === 'xlrTime') {
+    if (/公历|阳历|solar/i.test(calRaw)) calendarType = 'solar';
+    else if (/农历|阴历|lunar/i.test(calRaw)) calendarType = 'lunar';
+    else {
+      calendarType = 'lunar';
+      warnings.push('未写「历」，月与日按**农历**算（闰月按本月计）。要按公历数字起课，写一行「历: 公历」。');
+    }
+  } else if (calRaw) {
+    warnings.push('报数起课不看「历」（月日不参与），那一行已忽略。');
+  }
+
+  // 写的三宫／末宫只作对校（ADR-0015 第 3 条）——不采信为结果
+  const claimed = {};
+  const palaceList = values.palaces
+    ? String(values.palaces).split(/[\s,，、/]+/).filter(Boolean).slice(0, 3)
+    : [];
+  if (palaceList.length) claimed.palaces = palaceList;
+  if (values.final) claimed.final = String(values.final).trim();
+  for (const name of [...palaceList, claimed.final].filter(Boolean)) {
+    if (!XLR_PALACE_NAMES.includes(name)) {
+      hints.push(`「${name}」不像六宫之一（应为：${XLR_PALACE_NAMES.join('、')}），请核对。`);
+    }
+  }
+
+  const missing = [];
+  if (!localTime) missing.push('起课时间');
+  if (method === 'xlrNumbers' && !numbers.length) missing.push('报数');
+
+  const longitude = values.longitude !== undefined && values.longitude !== ''
+    ? Number(values.longitude) : null;
+  const placeName = values.placeName || '';
+  const question = values.question || '';
+  const known = [localTime, method === 'xlrNumbers' ? numbers.length : calendarType, question, placeName || longitude !== null]
+    .filter(Boolean).length;
+
+  return {
+    ok: missing.length === 0,
+    source: 'gua-tiao',
+    version: GUATIAO_VERSION,
+    confidence: Math.round((known / 4) * 100),
+    strategy: 'xlr',
+    fields: {
+      localTime,
+      placeName,
+      longitude,
+      latitude: values.latitude !== undefined && values.latitude !== '' ? Number(values.latitude) : null,
+      useTrueSolarTime: values.useTrueSolarTime !== undefined ? useTrueSolarTimeOf(values.useTrueSolarTime) : true,
+      numbers,
+      question,
+      category: values.category || '',
+      notes: [],
+      method,
+      ...(calendarType ? { calendarType } : {}),
+    },
+    claimed,
+    signature: values.signature || '',
+    tags: values.tags ? String(values.tags).split(/[\s,，、|]+/).filter(Boolean) : [],
+    review: {
+      status: values.status || '待应验',
+      log: [
+        ...(values.result ? [{ at: '', text: String(values.result) }] : []),
+        ...parseReviewEntries(blockValues.reviews),
+      ],
+    },
+    title: values.title || '',
+    hexagramText: '',
+    movingText: '',
+    tiyongText: '',
+    palaceText: [...palaceList, claimed.final].filter(Boolean).join(' '),
+    detected: {
+      times: localTime ? [localTime] : [],
+      numbers,
+      hexagrams: [],
+      places: placeName ? [placeName] : [],
+    },
+    warnings,
+    unknownKeys: [],
+    hints,
+    missing,
+    narrative: blockValues.narrative || values.narrative || '',
+    background: blockValues.background || values.background || '',
+    plan: blockValues.plan || values.plan || '',
+    collation: blockValues.collation || values.collation || '',
+    qa: blockValues.qa || values.qa || '',
+  };
+}
+
 /** '2026.10.5 5:20' / '2026年10月5日 5时20分' → '2026-10-05 05:20' */
 export function normalizeTime(s) {
   const m = String(s).match(/(\d{4})\D{1,3}(\d{1,2})\D{1,3}(\d{1,2})\D{0,3}(\d{1,2})\D{1,3}(\d{1,2})/);
@@ -465,23 +564,33 @@ function entriesText(log) {
 }
 
 /**
- * 小六壬卦录 → 只导出文字存录，不导出时／数／卦象字段。
- * 卦条 v1 描述不了三宫之课；这样写出的文件再导入会明确报「不支持」，而不是被猜成梅花。
+ * 小六壬卦录 → 卦条（导出 → 手改 → 再导入，可往返）。
+ * 时／法／数（或历）都要写出来，否则解回来会报缺——它是一条**真卦条**，
+ * 不再是 v1.5.x 那种「只作文字存档」的说明（ADR-0015 第 4 条）。
+ * 三宫写上是为了对校：重算结果与它不符时会被记进校勘，而不是直接采信。
  */
-function xlrToNotice(rec, withNarrative) {
+function xlrToGuaTiao(rec, withNarrative) {
+  const c = rec.cast || {};
   const L = [];
   L.push(HEADER);
-  L.push('# 此条为小六壬卦录：卦条 v1 只描述梅花易数，故不导出时／法／数／本卦／动。');
-  L.push('# 再导入不会被认成梅花卦；本文件作文字存档之用。');
   if (rec.title) L.push(`题: ${rec.title}`);
   if (rec.question) L.push(`问: ${rec.question}`);
   L.push(`类: ${rec.category || '其他'}`);
-  L.push(`法: ${XLR_LABELS[rec.cast?.method] || '小六壬'}`);
+  pushBlock(L, '背景', rec.background);
+  L.push(`时: ${c.localTime || rec.chart?.calendar?.dateTime || ''}`);
+  if (c.placeName) L.push(`地: ${c.placeName}`);
+  if (c.longitude !== null && c.longitude !== undefined) L.push(`经: ${c.longitude}`);
+  if (c.latitude) L.push(`纬: ${c.latitude}`);
+  L.push(`真太阳时: ${c.useTrueSolarTime === false ? '否' : '是'}`);
+  L.push(`法: ${XLR_LABELS[c.method] || '小六壬报数'}`);
+  if (c.numbers?.length) L.push(`数: ${c.numbers.join(' ')}`);
+  if (c.method === 'xlrTime') L.push(`历: ${c.calendarType === 'solar' ? '公历' : '农历'}`);
+  const palaces = (rec.chart?.palaces || []).map((p) => p.name).filter(Boolean);
+  if (palaces.length) L.push(`三宫: ${palaces.join(' ')}`);
   if (rec.reading?.signature) L.push(`签: ${rec.reading.signature}`);
   if (rec.tags?.length) L.push(`标签: ${rec.tags.join(' ')}`);
   if (rec.review?.status) L.push(`复盘: ${rec.review.status}`);
   pushBlock(L, '复盘条目', entriesText(rec.review?.log));
-  pushBlock(L, '背景', rec.background);
   pushBlock(L, '问答', rec.qa);
   if (withNarrative) pushBlock(L, '原文', rec.narrative);
   pushBlock(L, '方案', rec.plan);
@@ -496,7 +605,7 @@ function xlrToNotice(rec, withNarrative) {
  */
 export function toGuaTiao(rec, opts = {}) {
   const withNarrative = opts.withNarrative !== false;
-  if (isXlrChart(rec.chart)) return xlrToNotice(rec, withNarrative);
+  if (isXlrChart(rec.chart)) return xlrToGuaTiao(rec, withNarrative);
   const c = rec.cast || {};
   const L = [];
   const block = (out, label, text) => pushBlock(out, label, text);
@@ -532,8 +641,12 @@ export function toGuaTiao(rec, opts = {}) {
   return L.join('\n');
 }
 
-/** 模板：给「新建一条卦条」用。`#` 开头的整行是注释，删掉不影响解析。 */
-export function template() {
+/**
+ * 模板：给「新建一条卦条」用。`#` 开头的整行是注释，删掉不影响解析。
+ * @param {'meihua'|'xlr'} [kind='meihua'] 两法各一套（ADR-0015 第 6 条）——界面只展示，不硬编码。
+ */
+export function template(kind = 'meihua') {
+  if (kind === 'xlr') return xlrTemplate();
   const now = new Date();
   const p = (n) => String(n).padStart(2, '0');
   const t = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
@@ -571,5 +684,48 @@ export function template() {
 #   2026-12-20 初试过了
 原文: |
   （可省。把当初的解读全文粘在这里，多行不限。）
+`;
+}
+
+/** 小六壬的模板：两种起课法的必填不同，模板里把两条路都写出来（注释着的那条照抄即可）。 */
+function xlrTemplate() {
+  const now = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  const t = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
+  return `${HEADER}
+# ── 用法（小六壬之课）──────────────────────────────────
+# 与梅花卦条同一份格式，只是「法」不同。分流只看「法」，两法的必填不一样：
+#   报数起课：法 写「小六壬报数」，再写「数」（1–3 个，空格分开）＋「时」
+#   月日时辰起课：法 写「小六壬月日时辰」，只要「时」（月与日由时推出）＋「历」
+# 三宫**一律由程序从「数 + 时」重算**——你写了「三宫／末宫」只用来对校，
+# 与重算不符会记进校勘，不会直接采信。
+# 「历」写 农历（默认，闰月按本月计）或 公历；不写按农历，并会在提示里说明。
+# ─────────────────────────────────────────────────
+题: 出门之课
+问: 明天出门办事顺不顺？
+类: 出行
+时: ${t}
+地: 兰州
+经: 103.83
+真太阳时: 是
+法: 小六壬报数
+数: 3 5 2
+# 若走「月日时辰起课」，把上面「法」与「数」两行换成这两行（月与日由「时」推出）：
+# 法: 小六壬月日时辰
+# 历: 农历
+# 可选：三宫 / 末宫 —— 写了就与重算结果对校，不符则记入校勘
+# 三宫: 大安 留连 速喜
+# 末宫: 速喜
+# 签: 谶语，写了就覆盖引擎生成的
+# 标签: 出行 报数起课
+# ── 补充存录（与梅花卦条同一套键，都可省，都支持「键: |」多行块）──
+# 背景: |   求测人的背景、动机、几件事各占几分
+# 问答: |   当初的原文问答，约定以「问：」「答：」起行
+# 方案: |   可执行方案
+# 校勘: |   人工校勘说明（与引擎自动算出的 corrections 分开）
+# 复盘条目: |   一行一条：最早那条通常是首条复盘，之后是追记；行首可写日期
+#   2026-12-20 初试过了
+原文: |
+  （可省。把当初的断课全文粘在这里，多行不限。）
 `;
 }

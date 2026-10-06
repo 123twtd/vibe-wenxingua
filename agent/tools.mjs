@@ -239,10 +239,8 @@ export function createToolkit({ store, core, plugins = null, permission = DEFAUL
             if (!b.ok) {
               failed.push({
                 所缺: b.missing.join('、'),
-                卦: b.claimed.ben || '未定',
-                原因: b.unsupported === 'xlr'
-                  ? '卦条 v1 只描述梅花易数；小六壬请用 cast／save_record 的 method:xlrNumbers｜xlrTime 起课'
-                  : '卦条信息不完整',
+                卦: b.claimed.ben || b.claimed.final || '未定',
+                原因: '卦条信息不完整',
               });
               continue;
             }
@@ -274,6 +272,7 @@ export function createToolkit({ store, core, plugins = null, permission = DEFAUL
                 cast: {
                   method: b.fields.method, numbers: b.fields.numbers, localTime: b.fields.localTime,
                   longitude: b.fields.longitude, placeName: b.fields.placeName,
+                  calendarType: b.fields.calendarType,   // 小六壬 xlrTime 用
                   useTrueSolarTime: b.fields.useTrueSolarTime, movingFrom: b.fields.movingFrom,
                   question: b.fields.question, category: b.fields.category,
                 },

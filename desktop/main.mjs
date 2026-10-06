@@ -20,6 +20,7 @@ import {
   app as electronApp, BrowserWindow, Menu, Tray, shell, dialog,
   nativeImage, ipcMain, screen,
 } from 'electron';
+import { seedPlugins } from './../server/seed.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const IS_DEV = !electronApp.isPackaged;
@@ -98,26 +99,36 @@ function resolveDesktopDataDir() {
 
   const d = path.join(electronApp.getPath('appData'), '问心卦', 'data');
   fs.mkdirSync(d, { recursive: true });
-  seedIfEmpty(d);
+  seedPluginsInto(d);
   return { dir: d, mode: 'appdata' };
 }
 
-function seedIfEmpty(targetDir) {
+/**
+ * 把随包的示例插件补进数据目录。
+ *
+ * 早先用的是「records 非空就整段跳过」的判据，等于**老用户永远收不到升级带来的新样例**：
+ * v1.5.0 加了「皮肤集」，而任何已有卦录的机器上它都没落地（用户报「插件页没有皮肤集」）。
+ * 现在按 server/seed.mjs 的三条规矩走：新样例要送到、用户删掉的不复活、用户改过的不覆盖。
+ */
+function seedPluginsInto(targetDir) {
   try {
-    const records = path.join(targetDir, 'records');
-    if (fs.existsSync(records) && fs.readdirSync(records).some((f) => f.endsWith('.json'))) return;
-    const seed = path.join(process.resourcesPath, 'seed-data');
-    if (!fs.existsSync(seed)) return;
-    fs.cpSync(seed, targetDir, { recursive: true });
+    const seedDir = path.join(process.resourcesPath, 'seed-data', 'plugins');
+    const r = seedPlugins({ seedDir, targetDir: path.join(targetDir, 'plugins') });
+    if (r.seeded.length) log(`已补入随包示例插件：${r.seeded.join('、')}`);
+    if (r.keptRemoved.length) log(`按你先前删除的意思，未还原：${r.keptRemoved.join('、')}`);
   } catch (err) {
-    console.warn('[desktop] 复制初始数据失败：', err.message);
+    console.warn('[desktop] 补入示例插件失败：', err.message);
   }
 }
 
 const DATA = resolveDesktopDataDir();
 log('数据目录已定', DATA);
-// 必须在 import 服务之前设好
+// 必须在 import 服务之前设好。
+// 顺带把「这是哪种落点」也告诉服务端：外壳一律用 QXG_DATA_DIR 传路径，
+// 服务端只看得到「环境变量给了目录」，会一律报 env —— 界面于是把安装态的
+// 用户目录误显示成「项目目录（开发态）」（用户截图报过）。
 process.env.QXG_DATA_DIR = DATA.dir;
+process.env.QXG_DATA_MODE = DATA.mode;
 
 /* ---------- 窗口状态 ---------- */
 const stateFile = path.join(userDataDir, 'window-state.json');

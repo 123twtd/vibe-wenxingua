@@ -46,7 +46,7 @@
 
 仓库里**不含安装包**（二进制不进 git，走 Releases）。两条路：
 
-- **直接下载**：[Releases · v1.5.1](https://github.com/123twtd/vibe-wenxingua/releases/latest) → `wenxingua-1.5.1-setup.exe`（约 78 MB，中文向导，双击安装）
+- **直接下载**：[Releases · v1.6.0](https://github.com/123twtd/vibe-wenxingua/releases/latest) → `wenxingua-1.6.0-setup.exe`（约 78 MB，中文向导，双击安装）
 - **自己打**，约两分钟：
 
 ```
@@ -116,7 +116,7 @@ node server/index.mjs --port 8080   # 换端口
   ┌──────────────────────────────────────────────┐
   │            问  心  卦   ·   卦录台            │
   └──────────────────────────────────────────────┘
-   版本      v1.5.1
+   版本      v1.6.0
    地址      http://127.0.0.1:19730/
    数据目录  …\问心卦\data
 ```
@@ -129,7 +129,7 @@ node server/index.mjs --port 8080   # 换端口
 
 | 形态 | 数据目录 |
 |---|---|
-| 桌面版（安装包／免安装） | `%APPDATA%\问心卦\data`　← 卸载不删；首次运行会把随包的四个示例插件复制进来（打包时只从 `../data` 的 `plugins/` 取，不含卦录与 `config.json`，见 `desktop/package.json` 的 `extraResources`） |
+| 桌面版（安装包／免安装） | `%APPDATA%\问心卦\data`　← 卸载不删；随包的四个示例插件由程序补进 `plugins\`：首次运行带入，**升级时也会补入新增的**（已存在的同名文件不覆盖、你删掉的不还原，规则见 `server/seed.mjs`）；打包时只从 `../data` 的 `plugins/` 取，不含卦录与 `config.json` |
 | 从源码跑（桌面版或命令行） | 项目里的 `data\`；不可写则退回 `%APPDATA%\问心卦\data` |
 
 > **本仓库的 `data/` 是空的**（作者的数据与界面截图都不随仓库发布；`data/` 由程序首次运行时自建）。想马上看到东西：`node tools/import.mjs --template` 写两条导入，或跑 `node tools/check-web.mjs`——它会用合成示例卦录自起一个演示服务。
@@ -198,6 +198,7 @@ node server/index.mjs --port 8080   # 换端口
 - 键名可用中文全称或简写：`时`／`时间`／`localtime` 是同一个字段。完整字典见「导入与格式」页或 [docs/规范.md](docs/规范.md)。
 - **多条卦条用单独一行 `---` 分隔**，一次可以贴几十条。
 - **必填只有「时」**。`法` 为「已知卦象」时再填「本卦」与「动」；其余起卦法要填「数」与「动」。
+- **小六壬与梅花各有各的卦条模板**：小六壬写 `法: 小六壬报数`＋`数`（1–3 个），或 `法: 小六壬月日时辰`＋`历`；两套模板在「导入与格式」页**分栏展示**（模板由 `GET /api/spec` 下发）。六宫表在「卦典 → 小六壬六宫」看得到，起课仍在「起卦台」。
 - **缺什么就报什么**：解析器宁可返回「缺：起卦时间」，也不会替你猜一个年份。认不出的键名（写错字）会单独列出。
 
 三个入口共用同一套解析器，所以行为一致：
@@ -447,12 +448,12 @@ Claude Code / DSH（`.mcp.json`）：
 │  ├─ seed.mjs             把成对的对话记录批量录成卦录（语料自备，路径作参数）
 │  ├─ import.mjs           命令行导入（卦条 / 对话文本 / JSON）
 │  ├─ validate.mjs         按 schema 校验
-│  ├─ check.mjs            内核自检（253 项）
+│  ├─ check.mjs            内核自检（260 项）
 │  ├─ check-hermes.mjs     Hermes 协议/路由/策略自检（63 项，全离线）
-│  ├─ check-web.mjs        前端联调自检（122 项，连不上服务时自起示例服务）
+│  ├─ check-web.mjs        前端联调自检（123 项，连不上服务时自起示例服务）
 │  ├─ check-mcp.mjs        MCP stdio 自检（14 项）
 │  ├─ check-desktop.mjs    桌面版自检（54 项，真起 Electron 窗口）
-│  ├─ check-docs.mjs       文档与代码一致性自检（29 项）
+│  ├─ check-docs.mjs       文档与代码一致性自检（30 项）
 │  └─ check-validate.mjs   校验器负向测试（10 项）
 └─ data/                   ← 你的东西都在这里
    ├─ records/             一条卦录一个 JSON
@@ -585,9 +586,9 @@ export default {
 改了任何东西之后跑一遍：
 
 ```bash
-node tools/check.mjs           # 内核：卦典/历法/起卦/断语/卦录/插件/走势/规范/Agent   （253 项）
+node tools/check.mjs           # 内核：卦典/历法/起卦/断语/卦录/插件/走势/规范/Agent   （260 项）
 node tools/check-hermes.mjs    # Hermes：四协议适配 + 路由 + 重试熔断（全离线）        （63 项）
-node tools/check-web.mjs       # 前端联调（连不上服务时自起示例服务）：逐条路由真跑一遍 （122 项）
+node tools/check-web.mjs       # 前端联调（连不上服务时自起示例服务）：逐条路由真跑一遍 （123 项）
 node tools/check-mcp.mjs       # MCP stdio 往返与 stdout 纯净性                      （14 项）
 node tools/check-desktop.mjs   # 桌面版：真起 Electron 窗口跑断言                     （54 项）
 node tools/check-docs.mjs      # 文档与代码一致性（项数、附录 B、ADR 编号）           （27 项）
@@ -596,7 +597,7 @@ node tools/validate.mjs        # 按 schema 校验全部卦录与会话
 npm run check:all              # 七套一起跑
 ```
 
-七套合计 **545 项**，当前全过；各套各验什么、以及它们实际抓出过哪些缺陷，见 **[测试与质量保证](docs/09-测试与质量保证.md)**。
+七套合计 **554 项**，当前全过；各套各验什么、以及它们实际抓出过哪些缺陷，见 **[测试与质量保证](docs/09-测试与质量保证.md)**。
 
 ---
 

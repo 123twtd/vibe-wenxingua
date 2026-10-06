@@ -1,6 +1,6 @@
 {
   "name": "wenxingua",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "private": true,
   "type": "module",
   "description": "问心卦 · 梅花易数卦录台：长期记录卦象、快速导入新卦、按正法重算并给出有卦象气质的断语。",

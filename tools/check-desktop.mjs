@@ -62,6 +62,28 @@ check('主进程没有顶层 await app.whenReady()（会死锁）',
   !/^\s*await\s+electronApp\.whenReady\(\)/m.test(fs.readFileSync(path.join(DESKTOP, 'main.mjs'), 'utf8'))
   && /electronApp\.whenReady\(\)\.then/.test(fs.readFileSync(path.join(DESKTOP, 'main.mjs'), 'utf8')),
   'whenReady().then(main)');
+/* 打包后的模块布局与开发态**不一样**，这条断言就是为那次事故立的：
+   打包后 `main.mjs` 在 `resources/app.asar` 内（由 build.files 收入），
+   而 `core/ server/ web/ …` 在 `resources/app/`（extraResources，asar 外）。
+   于是 `main.mjs` 里任何 `from '../…'` 的相对 import 都会被解析到 `resources/<…>`——
+   那里没有东西，程序启动即抛 ERR_MODULE_NOT_FOUND（v1.6.0 就这么发出去过，
+   开发态自检全绿也照不出来，因为源码树下两者本来就相邻）。
+   两条规矩：main.mjs 不许 `../` 相对 import；`./` 形式的目标必须进 build.files 白名单。 */
+{
+  const mainSrc = fs.readFileSync(path.join(DESKTOP, 'main.mjs'), 'utf8');
+  const pkg = JSON.parse(fs.readFileSync(path.join(DESKTOP, 'package.json'), 'utf8'));
+  const listed = (pkg.build?.files || []).filter((f) => !f.startsWith('!'));
+  const specs = [...mainSrc.matchAll(/^\s*import[^'"]*from\s+'(\.[^']*)'/gm)].map((m) => m[1]);
+  const escaping = specs.filter((s) => s.startsWith('../'));
+  const missingFile = specs.filter((s) => s.startsWith('./'))
+    .map((s) => s.replace(/^\.\//, ''))
+    .filter((f) => !listed.includes(f) || !fs.existsSync(path.join(DESKTOP, f)));
+  check('main.mjs 只 import asar 内的同目录模块（不许相对跳出去）',
+    escaping.length === 0 && missingFile.length === 0,
+    escaping.length ? `越出 asar：${escaping.join('、')}`
+      : (missingFile.length ? `未进 build.files：${missingFile.join('、')}` : `同目录 import：${specs.join('、') || '（无）'}`));
+}
+
 check('IPC 处理器在 loadURL 之前注册',
   fs.readFileSync(path.join(DESKTOP, 'main.mjs'), 'utf8').indexOf('registerIpc();')
     < fs.readFileSync(path.join(DESKTOP, 'main.mjs'), 'utf8').indexOf('await mainWindow.loadURL'), '');

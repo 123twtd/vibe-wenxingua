@@ -17,7 +17,6 @@ import { execFile } from 'node:child_process';
 import { Store } from './store.mjs';
 import { ChatStore, CHAT_SCHEMA } from './chatStore.mjs';
 import { PluginHost } from './plugins.mjs';
-import { seedPlugins } from './seed.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -95,26 +94,15 @@ function resolveDataDir() {
   const base = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
   const dir = path.join(base, '问心卦', 'data');
   fs.mkdirSync(dir, { recursive: true });
-  seedDataInto(dir);
   return { dir, mode: 'appdata' };
 }
 
-/**
- * 落到用户目录时，把随包的示例插件补进去。
- * 规则见 server/seed.mjs：新样例要送到、用户删掉的不复活、用户改过的不覆盖。
- * **卦录不在随包范围内**，所以这里不碰 records/（那是用户的东西）。
- */
-function seedDataInto(targetDir) {
-  try {
-    const r = seedPlugins({
-      seedDir: path.join(CODE_ROOT, 'seed-data', 'plugins'),
-      targetDir: path.join(targetDir, 'plugins'),
-    });
-    if (r.seeded.length) console.log(`[store] 已补入随包示例插件：${r.seeded.join('、')}`);
-  } catch (err) {
-    console.warn(`[store] 补入示例插件失败（不影响启动）：${err.message}`);
-  }
-}
+/* 随包示例插件的落地**只在桌面版做**（`desktop/seed.mjs`，随包的 seed-data 也在那边：
+   `extraResources` 把它放在 resources/seed-data，桌面外壳从 resourcesPath 取）。
+   这里从前也试着复制 `<代码目录>/seed-data/plugins`，但那个目录在打包产物里根本不存在
+   （seed-data 在 resources/ 下、不在 app/ 里），等于一段「看着能用其实够不到」的代码。
+   更糟的是它引诱出过一次真事故：桌面外壳为了共用这份实现去 import 服务端模块，
+   而打包后两者的相对位置变了，程序直接起不来（v1.6.0）。所以这里不再插一手。 */
 
 const DATA = resolveDataDir();
 const dataDir = DATA.dir;

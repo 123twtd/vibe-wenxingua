@@ -202,14 +202,14 @@ try {
     check('非法注册不会留下路由', !host.matchRoute('GET', '/api/plugins/check-probe/skin/leaky.css'));
   }
 
-  /* ---- 随包示例插件的落地规则（server/seed.mjs）----
+  /* ---- 随包示例插件的落地规则（desktop/seed.mjs）----
      三条规矩各对应一次真出过的事故：
        ① 新样例要送到——老用户升级拿不到新增示例插件（v1.5.0 的皮肤集就没送到）；
        ② 用户删掉的不复活——删了又被塞回来，等于程序跟用户对着干；
        ③ 用户改过的不覆盖——有人会照着示例改自己的插件。
      纯函数 + 临时目录，直接跑三个场景。 */
   {
-    const seedMod = await load('server/seed.mjs');
+    const seedMod = await load('desktop/seed.mjs');
     const mk = (files) => {
       const d = fs.mkdtempSync(path.join(os.tmpdir(), 'qxg-seed-'));
       for (const [name, body] of Object.entries(files)) fs.writeFileSync(path.join(d, name), body, 'utf8');

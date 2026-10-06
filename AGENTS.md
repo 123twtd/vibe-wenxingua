@@ -57,7 +57,7 @@ node tools/check.mjs                # 内核自检（260 项，不需服务）
 node tools/check-validate.mjs       # 校验器负向测试（10 项）
 node tools/check-mcp.mjs            # MCP stdio 自检（14 项）
 node tools/check-hermes.mjs         # Hermes 协议/路由/策略自检（63 项，全离线）
-node tools/check-desktop.mjs        # 桌面版自检（54 项，真起 Electron 窗口）
+node tools/check-desktop.mjs        # 桌面版自检（55 项，真起 Electron 窗口）
 node tools/check-web.mjs            # 前端联调自检（123 项，连不上服务时自起示例服务）
 node tools/check-docs.mjs           # 文档与代码一致性（30 项）
 node tools/validate.mjs             # 按 schema 校验全部卦录与会话

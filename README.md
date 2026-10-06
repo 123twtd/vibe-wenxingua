@@ -46,7 +46,7 @@
 
 仓库里**不含安装包**（二进制不进 git，走 Releases）。两条路：
 
-- **直接下载**：[Releases · v1.6.0](https://github.com/123twtd/vibe-wenxingua/releases/latest) → `wenxingua-1.6.0-setup.exe`（约 78 MB，中文向导，双击安装）
+- **直接下载**：[Releases · v1.6.1](https://github.com/123twtd/vibe-wenxingua/releases/latest) → `wenxingua-1.6.1-setup.exe`（约 78 MB，中文向导，双击安装）
 - **自己打**，约两分钟：
 
 ```
@@ -116,7 +116,7 @@ node server/index.mjs --port 8080   # 换端口
   ┌──────────────────────────────────────────────┐
   │            问  心  卦   ·   卦录台            │
   └──────────────────────────────────────────────┘
-   版本      v1.6.0
+   版本      v1.6.1
    地址      http://127.0.0.1:19730/
    数据目录  …\问心卦\data
 ```
@@ -129,7 +129,7 @@ node server/index.mjs --port 8080   # 换端口
 
 | 形态 | 数据目录 |
 |---|---|
-| 桌面版（安装包／免安装） | `%APPDATA%\问心卦\data`　← 卸载不删；随包的四个示例插件由程序补进 `plugins\`：首次运行带入，**升级时也会补入新增的**（已存在的同名文件不覆盖、你删掉的不还原，规则见 `server/seed.mjs`）；打包时只从 `../data` 的 `plugins/` 取，不含卦录与 `config.json` |
+| 桌面版（安装包／免安装） | `%APPDATA%\问心卦\data`　← 卸载不删；随包的四个示例插件由程序补进 `plugins\`：首次运行带入，**升级时也会补入新增的**（已存在的同名文件不覆盖、你删掉的不还原，规则见 `desktop/seed.mjs`）；打包时只从 `../data` 的 `plugins/` 取，不含卦录与 `config.json` |
 | 从源码跑（桌面版或命令行） | 项目里的 `data\`；不可写则退回 `%APPDATA%\问心卦\data` |
 
 > **本仓库的 `data/` 是空的**（作者的数据与界面截图都不随仓库发布；`data/` 由程序首次运行时自建）。想马上看到东西：`node tools/import.mjs --template` 写两条导入，或跑 `node tools/check-web.mjs`——它会用合成示例卦录自起一个演示服务。
@@ -452,7 +452,7 @@ Claude Code / DSH（`.mcp.json`）：
 │  ├─ check-hermes.mjs     Hermes 协议/路由/策略自检（63 项，全离线）
 │  ├─ check-web.mjs        前端联调自检（123 项，连不上服务时自起示例服务）
 │  ├─ check-mcp.mjs        MCP stdio 自检（14 项）
-│  ├─ check-desktop.mjs    桌面版自检（54 项，真起 Electron 窗口）
+│  ├─ check-desktop.mjs    桌面版自检（55 项，真起 Electron 窗口）
 │  ├─ check-docs.mjs       文档与代码一致性自检（30 项）
 │  └─ check-validate.mjs   校验器负向测试（10 项）
 └─ data/                   ← 你的东西都在这里
@@ -590,14 +590,14 @@ node tools/check.mjs           # 内核：卦典/历法/起卦/断语/卦录/插
 node tools/check-hermes.mjs    # Hermes：四协议适配 + 路由 + 重试熔断（全离线）        （63 项）
 node tools/check-web.mjs       # 前端联调（连不上服务时自起示例服务）：逐条路由真跑一遍 （123 项）
 node tools/check-mcp.mjs       # MCP stdio 往返与 stdout 纯净性                      （14 项）
-node tools/check-desktop.mjs   # 桌面版：真起 Electron 窗口跑断言                     （54 项）
+node tools/check-desktop.mjs   # 桌面版：真起 Electron 窗口跑断言                     （55 项）
 node tools/check-docs.mjs      # 文档与代码一致性（项数、附录 B、ADR 编号）           （27 项）
 node tools/check-validate.mjs  # 校验器负向测试（改坏了必须报错）                     （10 项）
 node tools/validate.mjs        # 按 schema 校验全部卦录与会话
 npm run check:all              # 七套一起跑
 ```
 
-七套合计 **554 项**，当前全过；各套各验什么、以及它们实际抓出过哪些缺陷，见 **[测试与质量保证](docs/09-测试与质量保证.md)**。
+七套合计 **555 项**，当前全过；各套各验什么、以及它们实际抓出过哪些缺陷，见 **[测试与质量保证](docs/09-测试与质量保证.md)**。
 
 ---
 

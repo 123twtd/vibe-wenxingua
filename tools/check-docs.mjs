@@ -333,13 +333,13 @@ claim('文档引用的源码文件都存在', missing.length === 0,
     '网络不通时不至于无路可走');
 
   /* 随包示例插件的落地规则：旧版以「records 为空」判首次，老用户升级拿不到新样例
-     （v1.5.0 的皮肤集就没送到）。规矩写在 server/seed.mjs，文档必须跟着说清——
+     （v1.5.0 的皮肤集就没送到）。规矩写在 desktop/seed.mjs，文档必须跟着说清——
      这条断言守的是「别把规则悄悄改回整段跳过」。 */
   claim('示例插件的落地规则在代码与文档里都说清了',
-    read('server/seed.mjs').includes('keptRemoved')
+    read('desktop/seed.mjs').includes('keptRemoved')
     && read('docs/10-部署与运维手册.md').includes('升级新增的要补进去')
     && read('docs/07-数据模型与存储设计.md').includes('seedPlugins'),
-    'server/seed.mjs + docs/10 §5.3 + docs/07');
+    'desktop/seed.mjs + docs/10 §5.3 + docs/07');
 }
 
 // 文档里提到的自检脚本是否真的存在

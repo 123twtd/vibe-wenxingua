@@ -20,7 +20,12 @@ import {
   app as electronApp, BrowserWindow, Menu, Tray, shell, dialog,
   nativeImage, ipcMain, screen,
 } from 'electron';
-import { seedPlugins } from './../server/seed.mjs';
+/* ⚠️ 只能 import 与本文件**同处 asar 内**的模块（`./` 形式）。
+   跨到 `../server/…` 是坏主意：打包后 `main.mjs` 在 `resources/app.asar` 内，
+   而 `server/**` 在 `resources/app/`（asar 外），相对路径会被解析到
+   `resources/server/…` —— 那里什么都没有，程序当场起不来（v1.6.0 就这么发出去过）。
+   要访问 app/ 下的模块，得用 CODE_ROOT 拼绝对路径再动态 import。 */
+import { seedPlugins } from './seed.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const IS_DEV = !electronApp.isPackaged;

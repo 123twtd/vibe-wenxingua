@@ -173,6 +173,51 @@ try {
   check('插件全部载入无错', api.errors.length === 0, api.errors.join('；') || `${api.plugins.filter((p) => p.loaded).length} 个`);
   check('插件页面已注册', api.pages.length > 0, api.pages.map((p) => p.label).join('、'));
   check('插件面板已注册', api.panels.length > 0, api.panels.map((p) => p.label).join('、'));
+
+  /* ---- 皮肤（ADR-0014）----
+     宿主只做最弱的静态校验（id 唯一、css 非空、必须自带 data-skin 作用域）；
+     「宣纸/夜读两式是否齐全」属于内容质量，这里也不验——那是 check-web 的事
+     （它拿得到真的 CSS 路由）。这里验的是**宿主这一侧的三条规矩**。 */
+  check('皮肤已注册且字段齐备', api.skins.length > 0
+    && api.skins.every((s) => s.id && s.name && s.hint && Array.isArray(s.swatch) && s.url && s.pluginId),
+    api.skins.map((s) => s.name).join('、') || '（没有插件注册皮肤）');
+  check('每款皮肤的 CSS 都挂了只读路由',
+    api.skins.length > 0 && api.skins.every((s) => host.matchRoute('GET', s.url)),
+    api.skins.map((s) => s.url.replace('/api/plugins/', '')).join(' '));
+
+  /* 两条拒绝规则要真的挡得住：id 重复、CSS 无作用域。
+     用手写的最小 ctx（不经过插件文件）直接打宿主，断言清单没被污染。 */
+  {
+    const probe = host.makeContext(
+      { id: 'check-probe', routes: [], skins: [] },
+      { activate() {} },
+    );
+    const before = host.skins.length;
+    probe.registerSkin({ id: api.skins[0]?.id || 'dup', name: '冒名', css: '[data-skin="dup"]{--bg:#000}' });
+    probe.registerSkin({ id: 'leaky', name: '会泄漏', css: 'body{--bg:#f00}' });
+    probe.registerSkin({ id: '', name: '无 id', css: '[data-skin="x"]{--bg:#000}' });
+    check('宿主拒绝重复 id、无作用域、缺 id 的皮肤注册', host.skins.length === before,
+      `三次非法注册后仍是 ${host.skins.length} 款`);
+    // 探针往 host.routes 里塞过东西吗？只有合法的才挂路由，这里不该新增
+    check('非法注册不会留下路由', !host.matchRoute('GET', '/api/plugins/check-probe/skin/leaky.css'));
+  }
+
+  /* 插件可停用——这是使用者明确要的（「是插件就可以关闭和开启」）。
+     用内存 config 起一个只装皮肤插件的宿主，断言停用后清单与路由一起消失；
+     真实 data/config.json 只读不写。 */
+  {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qxg-skin-off-'));
+    fs.cpSync(path.join(ROOT, 'data', 'plugins', 'skins.mjs'), path.join(tmp, 'skins.mjs'));
+    const mem = { plugins: { skins: { enabled: false } } };
+    const memStore = { getConfig: () => mem, setConfig: (p) => Object.assign(mem, p) };
+    const off = new PluginHost({ dir: tmp, store: memStore, core: {}, logger: { log() {}, warn() {} } });
+    const offApi = await off.loadAll();
+    const offMeta = offApi.plugins.find((p) => p.id === 'skins');
+    check('停用皮肤插件：清单与 CSS 路由一起撤下',
+      offApi.skins.length === 0 && offMeta?.enabled === false && !off.matchRoute('GET', '/api/plugins/skins/skin/tang.css'),
+      `enabled=${offMeta?.enabled}，skins=${offApi.skins.length}`);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 } catch (err) {
   check('插件宿主可用', false, err.message);
 }

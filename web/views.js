@@ -14,6 +14,9 @@ import {
   chartHtml, xlrLunarHtml, methodBadge,
 } from './api.js';
 import { renderLineChart, legendHtml } from './chart.js';
+// 皮肤的应用与记忆在 skin.mjs（一处实现）：设置页「外观」区读写它，
+// 外壳 app.js 启动时套用、meta 到达后校验。见 ADR-0014。
+import { readSkinPref, applySkin, availableSkins } from './skin.mjs';
 // 对话只长在右侧那个常驻面板里（web/index.html 的 .agent-panel），
 // 所以这里不再引 chatpanel——「助手」页只留配置，两处入口是重复。
 
@@ -1387,6 +1390,7 @@ export const pluginsView = {
               </div>
               <div class="small muted" style="margin-top:6px">${h(x.description || '（无说明）')}</div>
               ${x.panels.length ? `<div class="small dim">卦录详情面板：${x.panels.map((pp) => h(pp.label)).join('、')}</div>` : ''}
+              ${x.skins?.length ? `<div class="small dim">皮肤：${x.skins.map((sk) => h(sk.name)).join('、')}（到「设置 → 外观」选用；停用本插件即全部撤下）</div>` : ''}
               ${x.exporters.length ? `<div class="small dim">导出格式：${x.exporters.map((e) => h(e.label)).join('、')}</div>` : ''}
               ${x.routes.length ? `<div class="small dim mono">${x.routes.map((r) => h(r)).join('　')}</div>` : ''}
             </div>`).join('') || '<div class="empty"><div class="big">◇</div>data/plugins/ 目录是空的。</div>'}
@@ -1433,6 +1437,9 @@ export default {
 
     // 5) 监听事件
     ctx.on('record.created', (rec) => ctx.log('新卦录', rec.id));
+
+    // 6) 注册一款皮肤（ADR-0014）：CSS 须自带 data-skin 作用域与宣纸/夜读两式
+    ctx.registerSkin({ id: 'my-skin', name: '我的皮肤', hint: '一句话点睛', css: '...' });
 
     // ctx.store / ctx.core / ctx.config / ctx.log 随取随用
   },
@@ -1986,12 +1993,12 @@ export const agentView = {
  * 设置
  * ------------------------------------------------------------
  * 对齐 DSH 桌面端那种「一页把该配的都配完」的做法：
- * 助手权限、模型状态、数据位置，全在这一页。
+ * 助手权限、模型状态、数据位置、外观皮肤，全在这一页。
  * 文档不在这儿读——它有自己的「文档」页，这里只留一个入口。
  * ========================================================== */
 export const settingsView = {
   title: '设 置',
-  desc: '助手权限、模型、数据位置与文档入口。这一页不开助手抽屉——在这儿配的就是它。',
+  desc: '助手权限、模型、数据位置、外观皮肤与文档入口。这一页不开助手抽屉——在这儿配的就是它。',
   async render(ctx) {
     let cfg = await api.get('/api/agent/config');
     // meta 必须在**生成 HTML 之前**取好：放在 mount 里就晚了，
@@ -2075,6 +2082,36 @@ export const settingsView = {
       </div>`;
     }
 
+    /* ---------- 外观（皮肤） ----------
+       皮肤是插件注册的整套设计语言（ADR-0014），清单随 meta 到达；这里只列
+       **当前可用**的，内置默认永远在第一个。宣纸／夜读是明暗的另一条轴，
+       仍由顶栏那枚按钮切——皮肤在两种明暗下都可用。 */
+    function appearanceHtml() {
+      const list = availableSkins();
+      const pref = readSkinPref();
+      const cur = pref && list.some((s) => s.id === pref.id) ? pref.id : '';
+      const curName = cur ? (list.find((s) => s.id === cur)?.name || cur) : '默认宣纸水墨';
+      const opt = (id, name, hint, swatch, on) => `
+        <div class="perm${on ? ' on' : ''}" data-skin-opt="${attr(id)}">
+          <div class="ph"><b>${h(name)}</b>${on ? '<span class="sp tag neutral">使用中</span>' : ''}</div>
+          ${swatch && swatch.length ? `<div class="skin-sw">${swatch.map((c) => `<i style="${attr(`background:${c}`)}"></i>`).join('')}</div>` : ''}
+          <div class="pd">${h(hint)}</div>
+        </div>`;
+      return `<div class="card">
+        <div class="card-title">外 观 <span class="sp tag ${cur ? 'good' : 'neutral'}" id="s-skin-now">${h(curName)}</span></div>
+        <div class="small dim" style="margin-bottom:8px">
+          皮肤是一整套设计语言（材质、字体、控件、密度、动效一起变），由插件提供、可随时停用；
+          <b>宣纸／夜读</b>是明暗两式，在顶栏那枚按钮切换——皮肤在两种明暗下都可用。
+        </div>
+        <div class="grid c2" id="s-skins">
+          ${opt('', '默认（宣纸水墨）', '程序自带的纸墨样式：暖白纸底、朱砂点睛，不依赖任何插件。', ['#f3eee3', '#fbf8f1', '#9e2b25'], cur === '')}
+          ${list.map((s) => opt(s.id, s.name, s.hint, s.swatch, cur === s.id)).join('')}
+        </div>
+        ${list.length ? '' : '<div class="small dim" style="margin-top:8px">当前没有可用皮肤——皮肤由插件提供，可到「插件」页启用对应插件。</div>'}
+        ${pref && !cur ? `<div class="small dim" id="s-skin-note" style="margin-top:8px">先前选用的「${h(pref.name)}」当前不可用（皮肤插件已停用或未载入）——已暂时回到默认；重新启用该插件后会自动恢复。</div>` : ''}
+      </div>`;
+    }
+
     /* ---------- 版本与更新 ---------- */
     function updateHtml() {
       const app = META_APP || {};
@@ -2111,7 +2148,7 @@ export const settingsView = {
       </div>`;
     }
 
-    const fullHtml = () => permHtml() + modelHtml() + dataHtml() + updateHtml() + docsEntryHtml();
+    const fullHtml = () => permHtml() + modelHtml() + dataHtml() + appearanceHtml() + updateHtml() + docsEntryHtml();
 
     return {
       html: fullHtml(),
@@ -2182,6 +2219,23 @@ export const settingsView = {
             if (box) box.innerHTML = `<span class="err">改不动：${h(err.message)}</span>`;
           }
         });
+
+        // 皮肤：点一下即时生效（整套设计语言立刻换），选择记在 localStorage；
+        // 选完就地更新选中态与标题上的名字，不整页重画
+        root.querySelectorAll('[data-skin-opt]').forEach((el) => el.addEventListener('click', () => {
+          const id = el.dataset.skinOpt;
+          const hit = id ? availableSkins().find((s) => s.id === id) : null;
+          if (id && !hit) return;
+          applySkin(hit || null);
+          root.querySelectorAll('[data-skin-opt]').forEach((x) => x.classList.toggle('on', x.dataset.skinOpt === id));
+          const now = root.querySelector('#s-skin-now');
+          if (now) {
+            now.textContent = hit ? hit.name : '默认宣纸水墨';
+            now.className = `sp tag ${hit ? 'good' : 'neutral'}`;
+          }
+          root.querySelector('#s-skin-note')?.remove();
+          toast(hit ? `皮肤已换成「${hit.name}」` : '已回到默认皮肤（宣纸水墨）');
+        }));
 
         // 页内跳转按钮：「打开文档」、模型卡上的「到助手页改模型设置」
         root.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => ctx.navigate(b.dataset.go)));

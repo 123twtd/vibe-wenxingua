@@ -24,6 +24,7 @@ import {
   renameSession, deleteSession, addAttachment, loadSessions,
   setPanelWire, contextChipHtml, balanceChipHtml,
 } from './chatpanel.js';
+import { applyStoredSkin, setAvailableSkins } from './skin.mjs';
 
 /** 侧栏可见的主项 */
 const NAV = [
@@ -109,6 +110,8 @@ async function refreshMeta() {
   }
   META.nav = [...NAV, ...OFF_NAV].map(({ path, label, icon, hint }) => ({ path, label, icon, hint }));
   META.askAssistant = askAssistant;
+  // 皮肤清单到了：校验已选皮肤是否仍可用（插件可能刚被停用/启用），必要时回落或恢复
+  setAvailableSkins(META.plugins?.skins || []);
   paintNav();
   await paintFoot();
   paintStatus();
@@ -378,6 +381,11 @@ function applyTheme(name) {
 }
 applyTheme(lsGet(LS_THEME) === 'night' ? 'night' : 'paper');
 
+/* 皮肤（ADR-0014）：与上面那条明暗轴正交——这里换的是整套设计语言。
+   也尽早套上：启动当即从 localStorage 读选中的皮肤并注入 <link>，不等 /api/meta；
+   清单到达后由 refreshMeta 校验（见下方 setAvailableSkins）。 */
+applyStoredSkin();
+
 function storedPanelWidth() {
   const w = Number(lsGet(LS_WIDTH));
   return Number.isFinite(w) && w >= PANEL_MIN && w <= PANEL_MAX ? w : PANEL_DEFAULT;
@@ -641,6 +649,12 @@ async function askAssistant(text) {
 /** 「这一版更新了什么」：键就是 package.json 里的版本号。
  *  加新版本时在这里补一条——写给人看的大白话，别堆术语。 */
 const WHATS_NEW = {
+  '1.5.0': [
+    '新增一款「皮肤集」插件，带来四套成套皮肤：唐风宫苑（绢黄描金）、宋瓷汝窑（雨过天青）、竹影清舍（竹青素木）、星野玄穹（玄黑星野）。',
+    '每套皮肤都自带宣纸与夜读两式——顶栏那枚「夜 读／宣 纸」按钮照旧管白天黑夜，皮肤在两种明暗下都可用。',
+    '换皮肤在「设置 → 外 观」里点一下即生效，选择记在本机；皮肤是插件，不想用就在「插件」页停用它，界面立刻回到默认的宣纸水墨。',
+    '皮肤是一整套设计语言（材质、字体、控件形状、装饰、密度、动效一起变），不是只换颜色；它们改的只是样式，不能执行脚本。',
+  ],
   '1.4.1': [
     '更新提示条不再盖住页面：它改成顶栏下的一条实心横条，出现时把下面整体推下去（原来是一条半透明浮条，正好压着页头标题与说明文字）。',
     '「下 载 新 版」可以直接下安装包了（连体积一起写出来），不必先跳发行页再自己找资产；旁边另给「发 行 说 明」。',

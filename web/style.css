@@ -61,8 +61,9 @@
   --tint-info: rgba(74, 111, 156, .09);
   --edge-bad: rgba(158, 43, 37, .42);
   --edge-good: rgba(63, 127, 99, .42);
+  --edge-info: rgba(74, 111, 156, .40);
   --on-accent: #fdfaf3;   /* 朱砂底上的字：纸白 */
-  --grain: .05;           /* 纸纹强度：夜读调更低 */
+  --grain: .05;           /* 纸纹强度：夜读调更低；皮肤会换成自己的纹理与强度 */
 
   --radius: 5px;
   --radius-sm: 3px;
@@ -125,6 +126,7 @@
   --tint-info: rgba(91, 140, 199, .08);
   --edge-bad: rgba(216, 96, 74, .50);
   --edge-good: rgba(79, 157, 120, .45);
+  --edge-info: rgba(91, 140, 199, .45);
   --on-accent: #14100a;
   --grain: .03;
 }
@@ -409,7 +411,7 @@ label.fld .hint { font-size: 10.5px; color: var(--ink-3); letter-spacing: 0; mar
 .tag.neutral { color: var(--ink-2); }
 /* 占法徽章：梅花与小六壬各用一色，列表与详情头一眼分得清 */
 .tag.meihua { color: var(--accent-2); background: var(--tint-1); }
-.tag.xlr { color: var(--info); border-color: rgba(74, 111, 156, .4); background: rgba(74, 111, 156, .08); }
+.tag.xlr { color: var(--info); border-color: var(--edge-info); background: var(--tint-info); }
 
 .muted { color: var(--ink-2); }
 .dim { color: var(--ink-3); }
@@ -456,7 +458,7 @@ label.fld .hint { font-size: 10.5px; color: var(--ink-3); letter-spacing: 0; mar
   background: var(--tint-1);
   border: 1px solid var(--rule-2); border-radius: var(--radius);
 }
-.xlr-box.result { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(158, 43, 37, .15); }
+.xlr-box.result { border-color: var(--accent); box-shadow: 0 0 0 1px var(--tint-accent); }
 .xlr-box .role { font-size: 10px; letter-spacing: 2.4px; color: var(--accent); }
 .xlr-box .nm { font-size: 20px; letter-spacing: 3px; color: var(--ink); line-height: 1.5; }
 .xlr-box .mn { font-size: 10.5px; color: var(--ink-2); }
@@ -914,6 +916,10 @@ body.agent-open .app { padding-right: var(--panel-w); }
 .perm .ph b { color: var(--accent-3); font-size: 13.5px; letter-spacing: 1.6px; font-weight: 500; }
 .perm.on .ph b::before { content: "● "; color: var(--accent); font-size: 9px; }
 .perm .pd { color: var(--ink-2); font-size: 11.5px; line-height: 1.7; }
+
+/* 「外观」区的三色预览条：底色／主色／点睛各一格，不点开也能看出各款的气象 */
+.skin-sw { display: flex; gap: 5px; margin: 5px 0 6px; }
+.skin-sw i { display: block; width: 20px; height: 8px; border-radius: 2px; border: 1px solid var(--rule-2); }
 
 .help-head {
   display: flex; align-items: center; gap: 8px;

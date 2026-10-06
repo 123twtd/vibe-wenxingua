@@ -550,6 +550,43 @@ async function main() {
        ${waitFor('document.body.classList.contains("agent-open")')}
        return { closed, open: document.body.classList.contains('agent-open'), stayed: location.hash === before };`,
       (v) => v && v.closed === true && v.open === true && v.stayed === true);
+    /* 皮肤（ADR-0014）：设置页「外观」区照插件清单列全；点一款即换整套设计语言，
+       选回默认即复原。比的是**计算后的 --bg**——这是「整套令牌真的生效」最硬的证据，
+       光看属性写成没有用（属性对了、样式没挂上也白搭）。插件被停用时，后一条会跳过。 */
+    await probe('设置页「外 观」区与插件注册的皮肤清单一致',
+      `${waitFor("document.querySelectorAll('[data-skin-opt]').length >= 1")}
+       const opts = [...document.querySelectorAll('[data-skin-opt]')];
+       const meta = await fetch('/api/meta').then(r => r.json()).catch(() => ({}));
+       const want = (meta.plugins?.skins || []).map(s => s.id);
+       return { n: opts.length,
+                hasDefault: opts.some(o => o.dataset.skinOpt === ''),
+                missing: want.filter(id => !opts.some(o => o.dataset.skinOpt === id)),
+                wantN: want.length,
+                on: opts.filter(o => o.classList.contains('on')).map(o => o.dataset.skinOpt) };`,
+      (v) => v && v.hasDefault && v.missing.length === 0 && v.on.length === 1 && v.on[0] === '');
+    await probe('点一款皮肤即换整套令牌，选回默认即复原',
+      `const root = document.documentElement;
+       const bg0 = getComputedStyle(root).getPropertyValue('--bg').trim();
+       const btn = document.querySelector('[data-skin-opt]:not([data-skin-opt=""])');
+       if (!btn) return { skip: true, why: '没有可用的皮肤（插件已停用？）' };
+       const id = btn.dataset.skinOpt;
+       btn.click();
+       await new Promise(r => setTimeout(r, 320));
+       const link = document.getElementById('skin-css');
+       const applied = { attr: root.dataset.skin || '',
+                         bg: getComputedStyle(root).getPropertyValue('--bg').trim(),
+                         css: link ? link.getAttribute('href') : '' };
+       const back = document.querySelector('[data-skin-opt=""]');
+       if (back) back.click();
+       await new Promise(r => setTimeout(r, 320));
+       const restored = { attr: root.dataset.skin || '',
+                          hasLink: !!document.getElementById('skin-css'),
+                          bg: getComputedStyle(root).getPropertyValue('--bg').trim() };
+       return { id, bg0, applied, restored };`,
+      (v) => v && (v.skip === true
+        || (v.applied.attr === v.id && v.applied.bg !== v.bg0 && v.applied.css.includes('/skin/')
+          && v.restored.attr === '' && v.restored.hasLink === false && v.restored.bg === v.bg0)));
+
     /* 文档页：独立的阅读器（左目录、右正文），文档不挤在设置页里 */
     await mainWindow.webContents.executeJavaScript('location.hash = "#/docs";');
     await probe('文档页能内嵌读文档',

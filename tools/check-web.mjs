@@ -50,7 +50,9 @@ function stub(name = 'stub') {
       if (k in t) return t[k];
       if (k === 'length') return 0;
       if (k === 'value' || k === 'textContent' || k === 'innerHTML' || k === 'id') return '';
-      if (k === 'dataset') return {};
+      // dataset 要**每个对象一份、可写可读**：皮肤那组断言要验 data-skin 写进去了
+      // （早先每次访问都返回新的 {}，写进去就丢，断言只能看到 undefined）
+      if (k === 'dataset') return (t.dataset = t.dataset || {});
       if (k === 'classList') return { add() {}, remove() {}, toggle() {}, contains: () => false };
       // style 要有 CSSStyleDeclaration 的三件套：界面用 setProperty 改 --panel-w 之类的变量
       if (k === 'style') return { setProperty() {}, removeProperty() {}, getPropertyValue: () => '' };
@@ -79,7 +81,9 @@ globalThis.document = new Proxy({
   addEventListener() {},
   body: stub('body'),
   title: '',
-}, { get(t, k) { return k in t ? t[k] : stub(`document.${String(k)}`); } });
+  // 记忆化：documentElement 这类「同一个对象」必须每次访问拿到同一个桩，
+  // 否则写进去的东西（如 <html data-skin>）下一次读就是新的空对象
+}, { get(t, k) { return k in t ? t[k] : (t[k] = stub(`document.${String(k)}`)); } });
 
 globalThis.window = new Proxy({
   addEventListener() {},
@@ -88,6 +92,16 @@ globalThis.window = new Proxy({
 }, { get(t, k) { return k in t ? t[k] : stub(`window.${String(k)}`); } });
 
 globalThis.location = { hash: '' };
+
+/* 内存版 localStorage：界面偏好（主题、皮肤、面板宽度）都记在这儿。
+   真浏览器里有它，桩环境里没有——不给它，皮肤那条「选完要记住」就验不了。 */
+globalThis.localStorage = {
+  _m: new Map(),
+  getItem(k) { return this._m.has(k) ? this._m.get(k) : null; },
+  setItem(k, v) { this._m.set(String(k), String(v)); },
+  removeItem(k) { this._m.delete(k); },
+  clear() { this._m.clear(); },
+};
 try {
   // Node 24 自带只读的 navigator，缺 clipboard 时才补
   if (!globalThis.navigator?.clipboard) {
@@ -248,7 +262,8 @@ const ROUTES = [
   ['#/plugins', '插件', ['应期提醒', '卦气统计', '单卦 HTML 卡片', '写 一 个 插 件']],
   ['#/plugin/review-watch/due', '插件页·应期提醒', ['应期', '回 插 件 列 表']],
   ['#/plugin/stats-plus/trend', '插件页·卦气统计', ['体 卦 五 行', '卦 气 走 势']],
-  ['#/settings', '设置', ['助 手 权 限', '只读', '可写', '可删', '全权', '文 档', '数 据', '版 本 与 更 新']],
+  ['#/settings', '设置', ['助 手 权 限', '只读', '可写', '可删', '全权', '文 档', '数 据', '版 本 与 更 新',
+    '外 观', '默认（宣纸水墨）']],
   // 复盘页：左边清单、右边面板；没选中时给一句「左边挑一条」
   ['#/review', '复盘·清单', ['复 盘', '未了结', '全部', '左边挑一条，右边写复盘']],
   ...(detailId ? [[`#/review/${detailId}`, '复盘·选中一条', ['开 启 操 作', '写 一 条', '看 全 卦']]] : []),
@@ -845,6 +860,68 @@ check('可入库', created.ok && !!created.record?.id, created.record?.id);
 if (created.record?.id) {
   const del = await (await fetch(`${BASE}/api/records/${created.record.id}`, { method: 'DELETE' })).json();
   check('可删除（移入 trash）', del.ok);
+}
+
+/* ============================================================
+ * 五、皮肤（插件注册的设计语言，见 ADR-0014）
+ * ------------------------------------------------------------
+ * 皮肤 CSS 的两式齐全与否，宿主验不了（它只做最弱的静态校验），
+ * 所以这一层由自检保证：清单字段、每款 CSS 的宣纸/夜读两式与核心令牌、
+ * 设置页是否照清单列全、以及皮肤应用/撤除的 DOM 行为。
+ * ============================================================ */
+console.log('\n【五】皮肤');
+
+const metaSkin = await (await fetch(`${BASE}/api/meta`)).json();
+const skins = metaSkin.plugins?.skins || [];
+check('皮肤清单随 meta 到达，字段齐备',
+  skins.length > 0 && skins.every((s) => s.id && s.name && s.hint && Array.isArray(s.swatch) && s.url && s.pluginId),
+  `${skins.length} 款：${skins.map((s) => s.name).join('、')}`);
+
+let cssOk = true;
+const cssDetail = [];
+for (const s of skins) {
+  const r = await fetch(BASE + s.url);
+  const css = await r.text();
+  const ct = r.headers.get('content-type') || '';
+  const day = css.includes(`[data-skin="${s.id}"]`);
+  const night = css.includes(`[data-skin="${s.id}"][data-theme="night"]`);
+  const tokens = ['--bg:', '--surface:', '--ink:', '--accent:', '--on-accent:', '--grain:']
+    .every((k) => css.includes(k));
+  if (!(r.ok && ct.startsWith('text/css') && day && night && tokens)) cssOk = false;
+  cssDetail.push(`${s.id}${day ? '' : '(缺宣纸式)'}${night ? '' : '(缺夜读式)'}${tokens ? '' : '(缺令牌)'}`);
+}
+check('每款皮肤：CSS 可命中、类型正确、宣纸/夜读两式齐全、覆盖核心令牌', cssOk, cssDetail.join(' '));
+
+// 宿主的两条拒绝规则：id 重复、CSS 无 data-skin 作用域（泄漏到全局）——都不许放进清单
+check('皮肤清单里 id 唯一', new Set(skins.map((s) => s.id)).size === skins.length);
+
+// 设置页要照清单列全（外观区就在设置页）
+globalThis.location.hash = '#/settings';
+await qxg.render();
+const skinHtml = String(qxg.state.lastHtml || '');
+const missingNames = skins.filter((s) => !skinHtml.includes(s.name)).map((s) => s.name);
+check('设置页「外观」区列出清单里的每一款皮肤',
+  skinHtml.includes('外 观') && missingNames.length === 0,
+  missingNames.length ? `没列到：${missingNames.join('、')}` : `${skins.length} 款全在`);
+
+// 应用与撤除：skin.mjs 是唯一实现，这里直接驱动它。
+// 桩 DOM 验「属性与记忆」这两件事；「样式真的挂上去了」由 check-desktop 在真窗口里验
+// （真窗口那两条比的是计算后的 --bg，桩环境里没有渲染，比不了）。
+{
+  const skin = await import('../web/skin.mjs');
+  const root = globalThis.document.documentElement;
+  const first = skins[0];
+  if (first) {
+    skin.applySkin({ id: first.id, name: first.name, url: first.url });
+    const pref = skin.readSkinPref();
+    check('选用皮肤：写到 <html data-skin> 并记住选择',
+      root.dataset.skin === first.id && pref?.id === first.id,
+      `data-skin=${root.dataset.skin}，记住 ${pref?.name}`);
+    skin.applySkin(null);
+    check('回默认：撤掉 data-skin 并清掉记住的选择',
+      root.dataset.skin === undefined && skin.readSkinPref() === null,
+      '已回内置宣纸水墨');
+  }
 }
 
 console.log(`\n———— 通过 ${pass} 项，失败 ${fail} 项 ————`);

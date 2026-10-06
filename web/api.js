@@ -168,6 +168,45 @@ function relationGlyph(key) {
   }[key] || '体用未明';
 }
 
+/* ---------- 小六壬（三宫版式，与梅花分区渲染） ---------- */
+
+/** 占法徽章：列表与详情头都从这里取，别处不许靠 ben 是否为空去猜 */
+export function methodBadge(item) {
+  const isXlr = item?.kind === 'xlr' || /^xlr/.test(String(item?.method || ''));
+  if (isXlr) return '<span class="tag xlr">道教小六壬</span>';
+  if (item?.method !== undefined) return '<span class="tag meihua">梅花易数</span>';
+  return '';
+}
+
+/** 三宫：月宫／日宫／时宫（或初宫／次宫／末宫），末宫高亮为结果宫 */
+export function xlrPalacesHtml(chart) {
+  const palaces = chart?.palaces || [];
+  const last = palaces.length - 1;
+  const cell = (p, i) => `<div class="xlr-box${i === last ? ' result' : ''}">
+      <div class="role">${h(p.role)}${i === last ? '　·　结果宫' : ''}</div>
+      <div class="nm">${h(p.name)}</div>
+      <div class="mn">${h(p.deity)}　${h(p.element)}　${h(p.direction)}　神数 ${h(p.spiritText)}</div>
+      <div class="ft">${h(p.grade?.label || '')}</div>
+      <div class="kj">${h(p.koujue || '')}</div>
+    </div>`;
+  return `<div class="xlr-row">${palaces.map(cell).join('')}</div>
+    <div class="xlr-chain">三宫顺数　${h(chart?.chainText || '')}　·　以末宫 ${h(chart?.result?.name || '')} 为主断</div>`;
+}
+
+/** 小六壬的农历行（详情页与起卦台预览共用） */
+export function xlrLunarHtml(chart) {
+  const l = chart?.lunar;
+  if (!l) return '<div class="small dim">此课按公历月日起课。</div>';
+  return `<div class="small dim">农历　${h(l.year)}年${h(l.monthName)}${h(l.dayName)}${l.isLeap ? '（闰月按本月计）' : ''}</div>`;
+}
+
+/** 卦象区总调度：梅花走六爻／体用，小六壬走三宫——版式分开，术语才不混 */
+export function chartHtml(chart) {
+  if (!chart) return '';
+  if (chart.kind === 'xlr' || /^xlr/.test(String(chart.method || ''))) return xlrPalacesHtml(chart);
+  return `${hexRowHtml(chart)}<div class="hr"></div>${liuyaoHtml(chart)}${tiyongHtml(chart)}`;
+}
+
 /** 断语整块（定调 + 通俗 + 古辞） */
 export function readingHtml(reading, opts = {}) {
   if (!reading) return '';
@@ -189,7 +228,7 @@ export function readingHtml(reading, opts = {}) {
   return `
     <div class="sig">${h(reading.signature)}</div>
     <div class="card" style="margin-top:18px">
-      <div class="card-title">卦 象 定 调</div>
+      <div class="card-title">${opts.toneTitle || '卦 象 定 调'}</div>
       ${tone}
     </div>
     <div class="card">

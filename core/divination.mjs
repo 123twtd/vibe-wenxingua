@@ -13,33 +13,49 @@ import {
   sixLines, mutualLines, changedLines, tiYongOfLines, trigramsOfLines, library,
 } from './hexagram.mjs';
 import { calendarInfo, zhiNumber, PLACES } from './calendar.mjs';
+import { XLR_METHODS, isXlrMethod, castXlr } from './xiaoliuren.mjs';
 
-/** 起卦法一览（前端下拉用） */
-export const METHODS = [
+/** 梅花易数起卦法一览（前端下拉用） */
+const MEIHUA_METHODS = [
   {
     id: 'numberAndTime',
     label: '一数 + 时辰（先报数，最常用）',
     hint: '上卦取数除以八之余，下卦取时辰数除以八之余，动爻取两数之和除以六之余。',
     needs: ['number', 'time'],
+    group: '梅花易数',
   },  {
     id: 'twoNumbers',
     label: '两数（先报数，后报数）',
     hint: '先报之数为上卦，后报之数为下卦，两数之和除以六取动爻。',
     needs: ['number2', 'time'],
+    group: '梅花易数',
   },
   {
     id: 'timeOnly',
     label: '年月日时（不报数）',
     hint: '年支数加月数加日数除以八为上卦，再加时辰数除以八为下卦，总和除以六取动爻。',
     needs: ['time'],
+    group: '梅花易数',
   },
   {
     id: 'manual',
     label: '已知卦象（直接指定本卦与动爻）',
     hint: '用于把别人替你起的卦（或旧卦）录入，互卦、变卦、体用由本程序推算。',
     needs: ['hexagram', 'moving'],
+    group: '梅花易数',
   },
 ];
+
+/**
+ * 起卦法总表：梅花在前（meta.methods[0] 与前端默认值都锚在它），小六壬在后。
+ * 两种占法同录一库，靠 chart.kind 分派；判别只走 kindOf()，不许别处自建枚举表。
+ */
+export const METHODS = [...MEIHUA_METHODS, ...XLR_METHODS];
+
+/** 起卦法 → 占法类别：'meihua' | 'xlr' */
+export function kindOf(method) {
+  return isXlrMethod(method) ? 'xlr' : 'meihua';
+}
 
 function remainderOr(n, base, fallback) {
   const r = ((n % base) + base) % base;
@@ -77,6 +93,11 @@ export function cast(input = {}) {
   });
   const hourNumber = useTrue ? cal.trueHourNumber : cal.clockHourNumber;
   const hourZhi = useTrue ? cal.trueHourZhi : cal.clockHourZhi;
+
+  // 小六壬：时间与时辰的解析同样只此一处；起课本体在 core/xiaoliuren.mjs
+  if (isXlrMethod(method)) {
+    return castXlr({ input, cal, hourNumber, hourZhi, useTrue, method });
+  }
 
   const steps = [];
   let upperName;
@@ -218,6 +239,7 @@ export function buildChart({ method, inputs, calendar, casting, lines, movingPos
   const score = scoreChart({ relation, bianRelation, huRelation, wangTi, wangYong, ben, bian, moving });
 
   return {
+    kind: 'meihua',
     method,
     inputs,
     calendar,
@@ -312,6 +334,8 @@ export function placeByName(name) {
  * @returns {'sum'|'number'} 匹配的取法；两者都不匹配时返回 'sum'（常法），差异留给校勘记录
  */
 export function inferMovingFrom(input, target) {
+  // 小六壬没有「动爻取法」这回事——别把它喂进梅花的试探
+  if (isXlrMethod(input?.method)) return input.movingFrom || 'sum';
   const want = Number(target);
   if (!(want >= 1 && want <= 6)) return input.movingFrom || 'sum';
   if (input.movingFrom) return input.movingFrom;

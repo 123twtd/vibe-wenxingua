@@ -1,4 +1,4 @@
-# 问心卦 · Agent 设计文档
+﻿# 问心卦 · Agent 设计文档
 
 | 项目 | 内容 |
 |---|---|
@@ -6,8 +6,8 @@
 | 标题 | Agent 设计文档 |
 | 版本 | 1.0 |
 | 状态 | 已发布 |
-| 适用产品版本 | v1.1.0 |
-| 最后更新 | 2026-10-03 |
+| 适用产品版本 | v1.3.0 |
+| 最后更新 | 2026-10-07 |
 | 读者 | 内核开发者、Agent 与工具维护者、插件作者、接 MCP 的外部 agent 使用者 |
 | 关联文档 | [00-文档索引.md](00-文档索引.md)、[01-系统设计说明书.md](01-系统设计说明书.md)、[02-架构与框图.md](02-架构与框图.md)、[03-接口文档.md](03-接口文档.md)、[04-接口控制文档-ICD.md](04-接口控制文档-ICD.md)、[06-Hermes网关与路由设计.md](06-Hermes网关与路由设计.md)、[07-数据模型与存储设计.md](07-数据模型与存储设计.md)、[09-测试与质量保证.md](09-测试与质量保证.md)、[10-部署与运维手册.md](10-部署与运维手册.md)、[11-安全与隐私设计.md](11-安全与隐私设计.md)、[12-插件与扩展开发指南.md](12-插件与扩展开发指南.md)、[13-术语表.md](13-术语表.md)、[规范.md](规范.md) |
 
@@ -177,8 +177,8 @@ flowchart TB
 |---|---|---|---|
 | 工具 | 21 个，见 §5.3 | `tools/list` / `tools/call` | 与 HTTP、助手页是同一份定义 |
 | 资源 | 3 个：`wenxingua://records`（全部卦录）、`wenxingua://spec/gua-tiao`（卦条规范）、`wenxingua://stats`（统计） | `resources/list` / `resources/read` | `read` 还额外支持 `wenxingua://record/<id>`，返回该卦的 Markdown |
-| 提示模板 | 2 个：`divine`（参数 `question` / `number` / `time`）、`review_due`（无参数） | `prompts/list` / `prompts/get` | 给外部 agent 一个「起卦 / 查该复盘的卦」的现成开口 |
-| `initialize` 的 `instructions` | 一句话交代「卦象由本服务算出，勿自行编造卦名爻辞」，并点出 `cast` / `save_gua_tiao` / `list_records` / `update_review` / `trend` / `hexagram_lookup` 与「先调 format_spec」 | `initialize` | 外部 agent 的 system 提示之外，再钉一次硬约束 |
+| 提示模板 | 2 个：`divine`（参数 `question` / `number` / `method` / `time`）、`review_due`（无参数） | `prompts/list` / `prompts/get` | 给外部 agent 一个「起卦 / 查该复盘的卦」的现成开口；`divine` 按 `method` 是否以 `xlr` 开头分两支：梅花支按【主】【互】【变】【断】【宜】【忌】【应期】引述，小六壬支按【月宫／初宫】【日宫／次宫】【末宫】【断】【宜】【忌】【应期】引述并叮嘱只用六宫术语 |
+| `initialize` 的 `instructions` | 一句话交代「问心卦，梅花易数与道教小六壬两种占法的卦录台，卦象一律由本服务算出、勿自行编造」，并点出 `cast`（梅花给卦名爻辞／小六壬传 `method:xlrNumbers`／`xlrTime` 出三宫与末宫断辞）、`save_gua_tiao`（只收梅花的卦条）、`list_records` / `update_review` / `trend` / `hexagram_lookup` 与「先调 format_spec 了解格式与两种占法的分别」 | `initialize` | 外部 agent 的 system 提示之外，再钉一次硬约束 |
 
 ---
 
@@ -323,12 +323,13 @@ if (!reply) {
 
 | 参数 | 类型 | 必填 | 约束 | 说明 |
 |---|---|---|---|---|
-| `method` | string | 否 | 枚举 `numberAndTime` / `twoNumbers` / `timeOnly` / `manual` | 起卦之法，默认 `numberAndTime` |
-| `numbers` | integer[] | 否 | `minimum: 1` | 一数一时辰给 1 个；两数给 2 个；`timeOnly` 不用 |
+| `method` | string | 否 | 枚举 `numberAndTime` / `twoNumbers` / `timeOnly` / `manual` / `xlrNumbers` / `xlrTime`（六法：前四梅花、后二小六壬） | 起卦之法，默认 `numberAndTime` |
+| `numbers` | integer[] | 否 | `minimum: 1` | 梅花：一数一时辰给 1 个；两数给 2 个；`timeOnly` 不用。小六壬 `xlrNumbers`：1–3 个 |
 | `localTime` | string | **是** | `YYYY-MM-DD HH:mm` | 起卦的钟表时间 |
 | `placeName` | string | 否 | — | 地点名，用于取经度算真太阳时 |
 | `longitude` | number | 否 | — | 给了就以它为准，否则按 `placeName` 查表 |
 | `useTrueSolarTime` | boolean | 否 | 默认 `true` | 是否按真太阳时定时辰。**这一项会改时辰，从而改整个卦** |
+| `calendarType` | string | 否 | 枚举 `lunar` / `solar` | 仅小六壬 `xlrTime` 用：月与日按农历（`lunar`，默认，闰月按本月计）还是公历（`solar`） |
 | `movingFrom` | string | 否 | 枚举 `sum` / `number` | `sum`＝数与时之和除六（常法）；`number`＝仅以报数除六 |
 | `hexagram` | string | 否 | — | `method=manual` 时的本卦，`泽水困` / `困` / `47` / `䷮` 皆可 |
 | `movingPosition` | integer | 否 | 1–6 | 动爻（自下而上第几爻） |
@@ -343,10 +344,10 @@ if (!reply) {
 
 | 工具 | 作用 | 关键入参 | 返回要点 | 何时该用 | 实现要点 | 失败模式 |
 |---|---|---|---|---|---|---|
-| **`cast`**<br/>起卦（只看不入库） | 按梅花易数正法起一卦，返回卦象、体用生克、月令旺衰、吉凶评分与完整断语 | `CAST_PROPS`，必填仅 `localTime` | `chartBrief()` 结构：`卦录`（本卦/互卦/变卦/动爻/爻辞/体卦/用卦/体用关系/体卦旺衰/变卦对体/互卦对体/总评/月建）、`起卦推演`（`casting.steps`，即「82 ÷ 8 余 2 → 兑 ☱」这样的逐步算式）、`时间`（钟表时间/真太阳时/四柱参考）、`断语`（`谶` + `定调`（七段 label→text）+ `通俗解`） | 用户只是问「这卦怎么说」，不需要落盘 | — | 缺 `localTime` → 抛「起卦需要时间（精确到分钟）。」；`manual` 模式卦名认不出 → 抛「无法识别卦名：X」；`movingPosition` 不在 1–6 → 抛「动爻须为 1-6」 |
-| **`save_record`**<br/>起卦并存入卦录 | 起一卦并落盘为一条卦录 | `CAST_PROPS` + `title`、`narrative`（原文）、`tags`（string[]）、`background`／`plan`／`collation`／`qa`（补充存录四字段，均可省）、`claimed`（object，`additionalProperties: true`） | `{ 已入库: <id>, ...recordBrief }`（含标题、类别、起卦时间、本卦、动爻、体用、总评、分数、谶、复盘状态、校勘数） | 用户说「记下来」「存一下」 | `id` 由 `core.record.makeId(a.localTime, store.ids())` 生成；有 `hexagram` 或 `method==='manual'` 时走 `buildFromHexagram()`，否则走 `buildRecord()`；`origin` 固定为 `{ kind:'agent', label:'AI 助手录入' }` | 缺 `localTime` 同上；`claimed` 里的卦名认不出时**不报错**（`audit()` 的设计是「认不出的不报，避免误伤」） |
+| **`cast`**<br/>起卦（只看不入库） | 起一卦：梅花易数给卦象、体用生克、月令旺衰、吉凶评分与七段断语；小六壬（`method=xlrNumbers`／`xlrTime`）给三宫、六神、末宫断辞与应期——两套术语不混用 | `CAST_PROPS`，必填仅 `localTime` | 梅花 `chartBrief()` 结构：`卦录`（本卦/互卦/变卦/动爻/爻辞/体卦/用卦/体用关系/体卦旺衰/变卦对体/互卦对体/总评/月建）、`起卦推演`（`casting.steps`，即「82 ÷ 8 余 2 → 兑 ☱」这样的逐步算式）、`时间`（钟表时间/真太阳时/四柱参考）、`断语`（`谶` + `定调`（七段 label→text）+ `通俗解`）；小六壬走 `xlrBriefOf()`：`方法`／`三宫`（位阶/宫/六神/五行/方位/神数/口诀）／`结果宫`／`起课推演`／`时间`／`断语` | 用户只是问「这卦怎么说」，不需要落盘 | — | 缺 `localTime` → 抛「起卦需要时间（精确到分钟）。」；`manual` 模式卦名认不出 → 抛「无法识别卦名：X」；`movingPosition` 不在 1–6 → 抛「动爻须为 1-6」；小六壬 `xlrNumbers` 报数 0 个或超过 3 个 → 抛错 |
+| **`save_record`**<br/>起卦并存入卦录 | 起一卦（梅花或小六壬皆可）并落盘为一条卦录 | `CAST_PROPS` + `title`、`narrative`（原文）、`tags`（string[]）、`background`／`plan`／`collation`／`qa`（补充存录四字段，均可省）、`claimed`（object，`additionalProperties: true`） | `{ 已入库: <id>, ...recordBrief }`（含标题、类别、起卦时间、本卦、动爻、体用、总评、分数、谶、复盘状态、校勘数） | 用户说「记下来」「存一下」 | `id` 由 `core.record.makeId(a.localTime, store.ids())` 生成；有 `hexagram` 或 `method==='manual'` 时走 `buildFromHexagram()`，否则走 `buildRecord()`；`origin` 固定为 `{ kind:'agent', label:'AI 助手录入' }` | 缺 `localTime` 同上；`claimed` 里的卦名认不出时**不报错**（`audit()` 的设计是「认不出的不报，避免误伤」） |
 | **`save_gua_tiao`**<br/>用「卦条」文本入库 | 把一段符合「卦条 v1」的纯文本解析并入库，支持一次多条（`---` 分隔） | `text`（必填） | `{ 共解析, 已入库: [recordBrief...], 未入库: [{所缺/原因, 卦}] }` | 用户粘来一段文本要录入；**这是最稳妥的批量录入方式** | 走 `core.guaTiao.parseGuaTiaoMany()`；每条 `b.ok === false` 进 `未入库` 并带 `所缺`；`b.claimed.ben` 存在或 `method==='manual'` 时走 `buildFromHexagram()`，否则 `buildRecord()`；`review` 用卦条里的状态，缺省 `待应验`；`origin` 为 `{ kind:'gua-tiao', label:'卦条导入' }` | 单条抛错被 try/catch 收进 `未入库`，**整批不会因一条坏而全失败**；模型若没先读 `format_spec`，很容易写出解析器认不出的键名——那些键名会进 `unknownKeys` 并计入 `未入库` |
-| **`list_records`**<br/>列出卦录 | 按关键词、类别、吉凶、复盘状态筛选卦录，返回摘要列表（按起卦时间倒序） | `q`、`category`（枚举）、`grade`（枚举 `大吉`/`吉`/`中吉`/`平`/`小凶`/`凶`）、`review`、`limit`（1–100，默认 20） | `{ 总数, 返回, 卦录: [recordBrief...] }` | 用户问「我以前的卦」「有哪些卦」 | `q` 是对 `{title, question, narrative, chart, reading, background, plan, collation, qa}` 整体 `JSON.stringify` 后小写包含匹配——**能搜到断语、卦局与补充存录字段**；`limit` 双重夹紧 `Math.min(100, Number(a.limit) \|\| 20)` | 无。`store.list()` 为空时返回 `总数: 0` |
+| **`list_records`**<br/>列出卦录 | 按关键词、类别、吉凶、复盘状态、起卦法筛选卦录，返回摘要列表（按起卦时间倒序） | `q`、`category`（枚举）、`grade`（枚举 `大吉`/`吉`/`中吉`/`平`/`小凶`/`凶`）、`review`、`method`（枚举六种起卦法，只看某一起课法时用）、`limit`（1–100，默认 20） | `{ 总数, 返回, 卦录: [recordBrief...] }` | 用户问「我以前的卦」「有哪些卦」 | `q` 是对 `{title, question, narrative, chart, reading, background, plan, collation, qa}` 整体 `JSON.stringify` 后小写包含匹配——**能搜到断语、卦局与补充存录字段**；`limit` 双重夹紧 `Math.min(100, Number(a.limit) \|\| 20)` | 无。`store.list()` 为空时返回 `总数: 0` |
 | **`get_record`**<br/>读一条卦录 | 按 id 读取一条卦录的全部内容 | `id`（必填） | `recordBrief` + `所问`、`校勘`（格式化为「标签：原述「x」→ 正法「y」」）、`断语`（七段 label→text）、`谶`、`通俗解`、`背景`、`方案`、`人工校勘`、`原文问答`、`复盘`、`原文`（**截断到 6000 字符**） | 用户问「那卦怎么说的」；或写复盘前要看清原卦 | — | id 不存在 → 抛「未找到卦录 X」 |
 | **`update_record`**<br/>改卦录的元信息 | 改标题、类别、所问、原文、补充存录（背景／方案／人工校勘／问答）、标签。**不重算卦象** | `id`（必填）+ `title` / `category`（枚举）/ `question` / `narrative` / `background` / `plan` / `collation` / `qa` / `tags` | 新的 `recordBrief` | 用户要改题目、改类别、补原文、加标签 | 只覆盖「显式传了的」字段（`if (a[k] !== undefined)`）；`updatedAt` 置为当前 ISO 时间；落盘前过 `core.record.normalizeRecord()` 归一化 | id 不存在 → 抛错；尝试用这个工具改卦象**不会成功**——参数里根本没有 `cast` / `chart` |
 | **`update_review`**<br/>写复盘 | 给一条卦录写复盘：状态、实况、追记 | `id`（必填）+ `status`（枚举 `待应验`/`应验中`/`已应验`/`未应验`/`已过期`/`无需应验`）、`result`、`logText`、`logAt` | `{ id, 复盘: <review 对象> }` | 用户说「那件事有结果了」。system prompt 明写这是「最要紧的一步」 | `status ∈ {已应验, 未应验, 已过期, 无需应验}` 且尚无 `reviewedAt` 时自动补 `reviewedAt`（用 `logAt` 或当天日期）；`logText` 存在时向 `review.log` **追加** `{ at, text }`，不覆盖旧条目 | id 不存在 → 抛错；只传 `logText` 不传 `status` 是合法的（只追记不改状态） |
@@ -354,7 +355,7 @@ if (!reply) {
 | **`stats`**<br/>总览统计 | 卦录总数、类别分布、吉凶分布、体用分布、卦象频次、复盘状态分布，以及走势摘要 | 无（`properties: {}`） | `store.stats()` 的全部字段 + `走势摘要` | 用户问「我一共起了多少卦」「都什么类别」 | — | 无 |
 | **`hexagram_lookup`**<br/>查卦典 | 查六十四卦的卦辞、大象辞、卦德、六爻爻辞 | `query`（必填），如「革」「49」「泽火革」「䷰」「改命」 | `卦序`、`卦名`、`卦符`、`上卦`、`下卦`、`卦宫`、`卦德`、`吉凶`、`卦辞`、`大象辞`、`用世之道`、`爻辞`（六条数组）、`用`（用九/用六，有则给） | 用户问某个卦的意思、要原文爻辞 | 先 `lib.find(q)` 精确找；找不到再做全文检索（卦辞＋大象辞＋卦德＋关键词＋六爻爻辞拼接后 `includes`）。命中 1 条就返回，命中多条返回 `{ 匹配多卦, 提示 }` 让模型换词再查 | 一条都没命中 → 抛「卦典里找不到「X」（卦名、卦序、卦符、卦辞、爻辞、卦德都可以搜）」 |
 | **`parse_import`**<br/>解析任意起卦文本 | 把非结构化起卦文本解析成候选卦录，**不落盘** | `text`（必填） | `{ 候选数, 候选: [{本卦, 互卦, 变卦, 动爻, 起卦时间, 地点, 报数, 体用, 识别度, 所缺}] }` | 不确定一段文本能不能识别时，先试解析，把识别结果告诉用户再决定入不入库 | 走 `core.importer.parseMany()`；`识别度` 是 `confidence%` | 认不出的字段以 `所缺` 数组返回，**解析器宁可报缺也不猜**；模型不得把 `所缺` 非空的候选直接转成 `save_gua_tiao` 提交 |
-| **`format_spec`**<br/>读格式规范 | 返回「卦条 v1」的完整格式说明与示例，以及卦录 JSON 的字段要求 | 无（`properties: {}`） | `卦条格式`（说明、示例模板、`FIELD_ALIASES` 全量别名表、`METHOD_LABELS` 起卦法中文名）、`卦录JSON`（`版本` = `core.migrate.CURRENT_SCHEMA`、说明、必填字段列表）、`类别取值`、`复盘状态` | **写新导入之前必须先读这个** | — | 无。这是纯读工具 |
+| **`format_spec`**<br/>读格式规范 | 返回「卦条 v1」的完整格式说明与示例、**小六壬段**，以及卦录 JSON 的字段要求 | 无（`properties: {}`） | `卦条格式`（说明、示例模板、`FIELD_ALIASES` 全量别名表、`METHOD_LABELS` 起卦法中文名；**卦条只描述梅花易数**）、`小六壬`（说明「三宫之课不走卦条、请用 cast／save_record」，`起课法`＝`XLR_LABELS`，`六宫`＝六宫列表「名（六神·五行·方位·神数）」）、`卦录JSON`（`版本` = `core.migrate.CURRENT_SCHEMA`、说明、必填字段列表）、`类别取值`、`复盘状态` | **写新导入之前必须先读这个** | — | 无。这是纯读工具 |
 
 ### 5.4 工具调用的统一错误契约
 
@@ -364,7 +365,7 @@ if (!reply) {
 
 ## 六、提示工程：`SYSTEM_PROMPT` 逐节分析
 
-`SYSTEM_PROMPT` 是 `agent/loop.mjs` 里的一段模板字面量，在每次 `runAgent()` 调用时被拼到消息序列最前面。全文分五节，另在第一节之后插了一节「一之二」（专讲用户说的「刚才那卦」该去哪儿找）。下面逐节引原文并给「为什么这么写」。
+`SYSTEM_PROMPT` 是 `agent/loop.mjs` 里的一段模板字面量，在每次 `runAgent()` 调用时被拼到消息序列最前面。全文分五节，另在第一节之后插了两节：「一之二」（专讲用户说的「刚才那卦」该去哪儿找）与「一之三」（专讲两种占法与术语隔离）。下面逐节引原文并给「为什么这么写」。
 
 ### 6.1 引子：把角色钉死成「操作者」
 
@@ -401,6 +402,24 @@ if (!reply) {
 **为什么加这一节（返工记录）**：用户的抱怨是「会话历史和工具历史是两个东西，之前算的卦并没有用到工具」。实例：某一轮模型在没有工具调用的回合里，自己写下了「火天大有／泽天夬／火风鼎」，而这与引擎对同样输入算出的「雷水解／水火既济／地水师」完全不符（说明那三卦是**凭感觉凑的**）。等到下一轮用户指着它追问时，模型既翻不到卦录台（那卦没入库），又因为窗口策略把那一轮切出了上下文，于是回答「历史里没有这条，是你记错了」——**它否认了自己写过的东西**。这一节把三件事同时钉住：①「刚才那卦」的第一现场是**对话**而不是卦录台；②自己没有工具也能写下的东西，写下了就得认；③认不出来就报缺，**不许用新卦补旧账**（补等于二次凑卦）。
 
 **可测性**：`tools/check.mjs` 直接断言 `SYSTEM_PROMPT` 含「一之二」「先读这段对话」「没有经过工具、没入库」「说成没发生过」四处字样——谁把这节删了或改了措辞，回归网立刻红。
+
+### 6.2.2 第一节之三「两种占法：梅花易数与小六壬」——**术语与断法不许混用**
+
+> ## 一之三、两种占法：梅花易数与小六壬
+>
+> 本程序收录两种占法，卦录同库，但**术语与断法各成一套，绝不许混用**：
+>
+> - **梅花易数**（method 为 numberAndTime／twoNumbers／timeOnly／manual）：论卦用本卦、互卦、变卦、动爻、体用生克、旺衰、应期。
+> - **道教小六壬**（method 为 xlrNumbers＝报数起课，一至三数；xlrTime＝月日时辰起课，农历默认、公历可选）：论课只用六宫（大安／留连／速喜／赤口／小吉／空亡）、六神、三宫（月宫／日宫／时宫，或初宫／次宫／末宫）与末宫断辞。**讲小六壬时不许出现体用、生克、旺衰、卦名、爻辞、互卦、变卦**；讲梅花时也不搬六宫那一套。
+>
+> 规矩：
+> - 用户说「小六壬／六壬／报数起课／月日时辰起课」时走小六壬；只说「起卦」而未指明时默认梅花，拿不准就问一句。
+> - 小六壬的报数同样是**用户自己的数**（一至三个），不许你编；月日时辰起课要**先问清农历还是公历**（用户未说则按农历，并说明这一点；闰月按本月计）。
+> - 小六壬**末宫为主断**：先按三宫逐宫说，再讲末宫断辞、宜忌与应期。
+
+**为什么加这一节**：卦录同库，两种占法的记录混在一处，最容易被模型「顺着梅花的腔调」去讲小六壬——于是冒出体用、生克、卦名、爻辞这些**小六壬根本不存在**的东西。这一节把三件事钉死：①**术语隔离**（讲小六壬不许出现体用／生克／旺衰／卦名／爻辞／互卦／变卦，讲梅花也不搬六宫那一套）；②**路由**（按用户话术决定走哪种占法，拿不准就问）；③**小六壬的输入纪律**（报数是用户自己的数、不许编；月日时辰起课**先问清农历还是公历**，闰月按本月计）。它与 `core/xiaoliuren.mjs` 的「术语隔离」注释、`check.mjs` 的【十四】小六壬段同源：内核断课本就只吐六宫术语，提示词这一节保证模型**转述时也不串味**。
+
+**可测性**：`tools/check.mjs` 的【十四】小六壬段断言断课文案不含梅花说法，`check-web.mjs` 亦断言小六壬详情页不混梅花术语。
 
 ### 6.3 第二节「怎么说话」——腔调与边界
 

@@ -216,15 +216,22 @@ const corrRoute = corrItem
     ? [`#/record/${detailId}`, '卦录（无校勘）', ['卦 象 定 调', '返 回 卦 录']]
     : [EMPTY_HASH, '含校勘的卦录（空库降级）', EMPTY_EXPECTS];
 
+// 小六壬记录的分区渲染：本库确有小六壬记录时才验这条路由（作者库里可能还没有）
+const xlrItem = recItems.find((it) => it.kind === 'xlr');
+const xlrRoute = xlrItem
+  ? [`#/record/${xlrItem.id}`, '小六壬卦录', ['三 宫', '结果宫', '断 课 定 调']]
+  : null;
+
 const ROUTES = [
   ['#/', '总览', ['卦 录 总 数', '起 手 之 处', '平 均 总 评', '待 应 验']],
-  ['#/records', '卦录', ['搜卦名', '吉凶不限', '状态不限', '类别不限', '总评↓']],
+  ['#/records', '卦录', ['搜卦名', '吉凶不限', '状态不限', '类别不限', '总评↓', '方法不限', '道教小六壬']],
   detailRoute,
   corrRoute,
+  ...(xlrRoute ? [xlrRoute] : []),
   // 默认落在「领域运势 + 应验那天」——那正是「不同的事就是不同的运势线」这条反馈
   ['#/trend', '走势', ['吉凶诸线', '领域运势', '五行占比', '分类别均值', '平滑窗口', '卦 气 走 势', '起 落',
     '横轴落在哪天', '起卦那天', '应验那天', '只看类别']],
-  ['#/cast', '起卦台', ['起 卦 之 法', '时 与 地', '所 问 之 事']],
+  ['#/cast', '起卦台', ['起 卦 之 法', '时 与 地', '所 问 之 事', '道教小六壬']],
   // 导入页把「录入流程」与「卦条规范」合成一处：解析框本身就是校验，
   // 所以模板、字段字典、版本迁移都在这一页，不再另开「格式」页（两处必然对不上）。
   ['#/import', '导入与格式', ['一 · 粘 贴 解 析', '解 析', '二 · 卦 条 v1', '三 · 字 段 字 典',
@@ -241,7 +248,7 @@ const ROUTES = [
   ['#/plugins', '插件', ['应期提醒', '卦气统计', '单卦 HTML 卡片', '写 一 个 插 件']],
   ['#/plugin/review-watch/due', '插件页·应期提醒', ['应期', '回 插 件 列 表']],
   ['#/plugin/stats-plus/trend', '插件页·卦气统计', ['体 卦 五 行', '卦 气 走 势']],
-  ['#/settings', '设置', ['助 手 权 限', '只读', '可写', '可删', '全权', '文 档', '数 据']],
+  ['#/settings', '设置', ['助 手 权 限', '只读', '可写', '可删', '全权', '文 档', '数 据', '版 本 与 更 新']],
   ['#/docs', '文档', ['文 档', '上手', '设计', 'doc-item']],
   // 桌面菜单的「帮助」把人送到 #/docs/<id>，在这儿内嵌阅读。
   // 正文是 mount 里异步取的，而本套的 DOM 是个 Proxy 桩、照不出 mount 的改动，
@@ -274,6 +281,17 @@ for (const [hash, label, expects] of ROUTES) {
     missing.length === 0 && bad.length === 0,
     [missing.length ? `缺：${missing.join('、')}` : '', bad.join('、')].filter(Boolean).join('；') || `HTML ${html.length} 字`,
   );
+}
+
+// 小六壬详情页**不许**渲染梅花区块——「查看与标注要分清楚」的机器断言
+if (xlrItem) {
+  globalThis.location.hash = `#/record/${xlrItem.id}`;
+  await qxg.render();
+  const html = String(qxg.state.lastHtml || '');
+  const leaked = ['古 辞 佐 证', '吉 凶 权 衡', '体 · 你', '六 爻', '本卦', '互卦', '变卦'].filter((t) => html.includes(t));
+  check('小六壬详情页不渲染梅花区块（六爻／体用／古辞／权衡）',
+    html.includes('三 宫') && !leaked.length,
+    leaked.length ? `混入：${leaked.join('、')}` : `HTML ${html.length} 字`);
 }
 
 console.log('\n【一·B】起卦台：不许替用户预填');
@@ -422,6 +440,16 @@ console.log('\n【二·B】对话轨迹渲染（不依赖模型，塞合成事�
       && hDone.includes('&quot;本卦&quot;:&quot;泽火革&quot;') && !hDone.includes('\\&quot;'));
   cp.resetChat();
 
+  /* 用户消息也走 Markdown 渲染：多行照原样折行，列表、加粗认得出来。
+     早先这里只做 HTML 转义，HTML 把换行折成一个空格——用户分几行写的整段话会挤成一大坨。 */
+  cp.resetChat();
+  cp.chatState.convo.push({ role: 'user', content: '第一行\n第二行\n- 第三行' });
+  const hu = cp.convoHtml();
+  check('用户消息保留换行与格式（不再折成一整段）——早先只转义不渲染 Markdown',
+    hu.includes('msg user') && hu.includes('第一行<br>第二行') && hu.includes('<li>第三行</li>')
+    && !hu.includes('&lt;br&gt;'), hu.slice(0, 90));
+  cp.resetChat();
+
   /* 面板顶栏的两枚常驻 chip：上下文占用 / 厂商余额。
      它们常驻在「设置」之前，是发消息前先看一眼的即时信息。这里断言占位能渲染、
      窗口未知时只显示已用 token、不支持余额的厂商给「余额 —」兜底。 */
@@ -477,11 +505,24 @@ console.log('\n【二·B】对话轨迹渲染（不依赖模型，塞合成事�
   const cost = Date.now() - t0;
   check(`随包文档全部渲染得出来且不空转（${docFiles.length} 篇，${cost}ms）`,
     !stuck.length && cost < 5000, stuck.length ? `卡住/异常：${stuck.join('、')}` : `共 ${docFiles.length} 篇`);
+
+  /* 段落里的换行：`<br>` 必须在 inline() 之外拼——拼进去会被 esc() 转成 `&lt;br&gt;`，
+     界面上就是满屏字面的 `<br>`（导入的 DeepSeek 原文几乎每段都有换行，真出过这一版）。 */
+  const mdLines = md.renderMarkdown('第一行\n第二行');
+  check('Markdown 段落：段内换行渲染成 <br>，不是字面 &lt;br&gt;',
+    mdLines.includes('第一行<br>第二行') && !mdLines.includes('&lt;br&gt;'), mdLines.slice(0, 60));
+  const mdFmt = md.renderMarkdown('**加粗一行**\n第二行 `code`');
+  check('Markdown 段落：每行各自解析行内记号，换行仍在',
+    mdFmt.includes('<strong>加粗一行</strong>') && mdFmt.includes('<br>') && mdFmt.includes('<code>code</code>'),
+    mdFmt.slice(0, 80));
 }
 
 console.log('\n【二·C】接口与前端约定一致性');
 const meta = await (await fetch(`${BASE}/api/meta`)).json();
-check('meta.methods 与起卦台下拉匹配', Array.isArray(meta.methods) && meta.methods.every((m) => m.id && m.label));
+check('meta.methods 与起卦台下拉匹配（含小六壬两法）',
+  Array.isArray(meta.methods) && meta.methods.length === 6 && meta.methods.every((m) => m.id && m.label)
+  && meta.methods.some((m) => m.id === 'xlrNumbers') && meta.methods.some((m) => m.id === 'xlrTime'),
+  meta.methods.map((m) => m.id).join('、'));
 check('meta.categories 有八类', meta.categories.length === 8, meta.categories.join('、'));
 check('meta.places 含兰州', meta.places.some((p) => p.name === '兰州'));
 check('meta.reviewStatuses 含「待应验」', meta.reviewStatuses.includes('待应验'));
@@ -496,6 +537,72 @@ check('meta 声明了结构版本与卦条版本',
   `结构 v${meta.app.schemaVersion}　卦条 v${meta.guaTiao.version}`);
 check('meta 里带了应期分档（界面要做筛选与图例）',
   Array.isArray(meta.yingqiHorizons) || true, '（由 /api/trend 提供）');
+// 更新说明卡与更新检测都读 meta 上的这两项：前者决定弹不弹，后者决定出不出网
+check('meta.config 暴露 lastSeenVersion 与 updateCheck（界面据此决定弹不弹、出不出去问）',
+  !!meta.config && typeof meta.config.lastSeenVersion === 'string' && typeof meta.config.updateCheck === 'boolean',
+  `lastSeenVersion=${JSON.stringify(meta.config?.lastSeenVersion)}　updateCheck=${meta.config?.updateCheck}`);
+
+console.log('\n【二·D】版本更新：更新说明、版本比较与横幅');
+{
+  const wn = qxg.whatsNew || {};
+  check('更新说明表：有版本注记，且每条都写了要点（给用户看的大白话）',
+    Object.keys(wn).length >= 1
+    && Object.values(wn).every((v) => Array.isArray(v) && v.length >= 2 && v.every((s) => typeof s === 'string' && s.length > 8)),
+    Object.keys(wn).join('、'));
+  check('版本比较：按数字段比（1.10 比 1.9 新）；同版、更旧、空串都不算新',
+    qxg.hasNewerVersion('1.3.0', '1.4.0') === true
+    && qxg.hasNewerVersion('1.3.0', '1.10.0') === true
+    && qxg.hasNewerVersion('v1.3.0', '1.3.1') === true
+    && qxg.hasNewerVersion('1.3.0', '1.3.0') === false
+    && qxg.hasNewerVersion('1.3.0', '1.2.9') === false
+    && qxg.hasNewerVersion('1.3.0', '') === false);
+  const banner = qxg.updateBannerHtml({ latest: '9.9.9', url: 'https://github.com/123twtd/vibe-wenxingua/releases' });
+  check('更新横幅：带新版本号、发行页入口与关闭按钮',
+    banner.includes('9.9.9') && banner.includes('查 看 更 新')
+    && banner.includes('id="ub-go"') && banner.includes('id="ub-close"') && !banner.includes('update-banner'),
+    banner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90));
+}
+
+console.log('\n【二·E】更新检测接口与配置写入口');
+{
+  // 先按默认（开着检测）问一次：无论 GitHub 通不通，都必须 ok:true，不许 500
+  const uc = await (await fetch(`${BASE}/api/update-check`)).json();
+  check('更新检测：网络通就有版本号、不通就静默降级（照样 ok:true，绝不 500）',
+    uc.ok === true && uc.current === meta.app.version && typeof uc.latest === 'string'
+    && (uc.latest === '' ? !!uc.error : true),
+    uc.latest ? `最新 ${uc.latest}（本机 ${uc.current}）` : `取不到（静默）：${uc.error || '未知原因'}`);
+
+  const before = meta.config || {};
+  // 白名单：顶层配置只认 lastSeenVersion 与 updateCheck，别的键一个都不许动
+  const rejectRes = await fetch(`${BASE}/api/config`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ appName: '改个名试试' }),
+  });
+  check('配置写入口：白名单之外的键一律拒绝（config.json 不是请求体能改的）', rejectRes.status === 400, `HTTP ${rejectRes.status}`);
+
+  const setRes = await fetch(`${BASE}/api/config`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lastSeenVersion: '9.9.9-check', updateCheck: false }),
+  });
+  const afterMeta = (await (await fetch(`${BASE}/api/meta`)).json()).config;
+  check('配置写入口：两个白名单键可写，且不碰其他键',
+    (await setRes.json()).ok === true && afterMeta.lastSeenVersion === '9.9.9-check'
+    && afterMeta.updateCheck === false && afterMeta.appName === before.appName,
+    `lastSeenVersion=${afterMeta.lastSeenVersion}　updateCheck=${afterMeta.updateCheck}　appName 未变=${afterMeta.appName === before.appName}`);
+
+  const off = await (await fetch(`${BASE}/api/update-check`)).json();
+  check('更新检测：设置里关掉后如实说「已停用」，且不再出网',
+    off.ok === true && off.enabled === false && off.latest === '', `enabled=${off.enabled}`);
+
+  // 测完复原：自检不该在用户的 config.json 里留测试值
+  await fetch(`${BASE}/api/config`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lastSeenVersion: before.lastSeenVersion ?? '', updateCheck: before.updateCheck !== false }),
+  });
+  const restored = (await (await fetch(`${BASE}/api/meta`)).json()).config;
+  check('配置写入口：自检跑完把配置复原，不留测试值',
+    restored.lastSeenVersion === (before.lastSeenVersion ?? '') && restored.updateCheck === (before.updateCheck !== false),
+    `lastSeenVersion=${JSON.stringify(restored.lastSeenVersion)}　updateCheck=${restored.updateCheck}`);
+}
 
 console.log('\n【二·B】走势接口');
 {
@@ -509,6 +616,11 @@ console.log('\n【二·B】走势接口');
     el.series.map((s) => `${s.name}=${s.values.join('/')}`).join('　'));
   const cat = (await (await fetch(`${BASE}/api/trend?mode=category`)).json()).trend;
   check('走势：分类别均值', cat.series.length >= 2, cat.series.map((s) => s.name).join('、'));
+  const txlr = (await (await fetch(`${BASE}/api/trend?mode=fortune`)).json()).trend;
+  check('走势：小六壬记录被排除且接口给出说明',
+    typeof txlr.skippedXlr === 'number'
+    && (txlr.skippedXlr === 0 || txlr.notes.some((n) => n.includes('小六壬'))),
+    `skippedXlr=${txlr.skippedXlr}`);
   const bad = await fetch(`${BASE}/api/trend?mode=不存在的模式`);
   check('走势：未知模式不崩', bad.ok, `HTTP ${bad.status}`);
 }
@@ -539,6 +651,14 @@ console.log('\n【二·C】规范、校验与 Agent 接口');
   })).json();
   check('Agent 工具接口：cast 可由界面/外部直接调', castTool.ok && castTool.result.卦录.本卦 === '泽火革䷰',
     `${castTool.result?.卦录?.本卦} 动${castTool.result?.卦录?.动爻}`);
+  const castXlrTool = await (await fetch(`${BASE}/api/agent/tool/cast`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ arguments: { method: 'xlrNumbers', numbers: [3, 5, 2], localTime: '2026-10-06 12:30', longitude: 103.83, useTrueSolarTime: false } }),
+  })).json();
+  check('Agent 工具接口：cast 支持小六壬（三宫，且不带梅花术语）',
+    castXlrTool.ok && castXlrTool.result.三宫?.length === 3
+    && !/体用|生克|旺衰|本卦|互卦|变卦|动爻/.test(JSON.stringify(castXlrTool.result)),
+    (castXlrTool.result?.三宫 || []).map((p) => p.位阶 + p.宫).join('→'));
   const nf = await fetch(`${BASE}/api/agent/tool/没有这个工具`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
   });
@@ -611,6 +731,23 @@ const junk = await (await fetch(`${BASE}/api/import/parse`, {
   body: JSON.stringify({ text: '今天天气不错，出去走走吧。' }),
 })).json();
 check('无关文字不硬认', junk.count === 0, `候选 ${junk.count} 条`);
+
+// 小六壬文本：解析要拒收，**提交也要硬拦**——若放行，会被当成「一数＋时辰」猜出一个假卦，
+// 那正是「认不准就报缺、不许猜」明令禁止的。两关合并成一条断言。
+{
+  const xlrText = '# 卦条 v1\n问: 小六壬用例\n时: 2026-10-06 12:30\n法: 小六壬报数\n数: 3 5 2\n';
+  const parsed = await (await fetch(`${BASE}/api/import/parse`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: xlrText }),
+  })).json();
+  const blk = parsed.blocks?.[0];
+  const commit = await (await fetch(`${BASE}/api/import/commit`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items: [{ block: blk }] }),
+  })).json();
+  check('卦条里的六壬文本：解析标「不支持」、提交硬拦（不猜成梅花卦）',
+    blk?.unsupported === 'xlr' && (commit.created?.length || 0) === 0 && (commit.failed?.length || 0) === 1,
+    blk?.unsupported ? `unsupported=${blk.unsupported}；提交 ${commit.created?.length || 0} 入 / ${commit.failed?.length || 0} 拒` : '解析未标 unsupported');
+}
 
 console.log('\n【四】起卦与断语的完整往返');
 const castRes = await (await fetch(`${BASE}/api/cast`, {

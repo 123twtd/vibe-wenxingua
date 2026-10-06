@@ -41,24 +41,63 @@ function checkRecord(rec, name) {
   const m = migrate.migrate(rec);
   if (m.error) return push(name, false, [{ path: '(迁移)', message: m.error }]);
   const r = validate(m.record, RECORD_SCHEMA, { strict: true });
-  // 结构之外，再查几处「语义」约定
+  // 结构之外，再查几处「语义」约定。两种占法的约定各自成套，不混用。
   const semantic = [];
-  if (m.record.reading?.tone) {
-    const labels = m.record.reading.tone.map((t) => t.label).join('');
-    if (labels !== '主互变断宜忌应期') semantic.push({ path: 'reading.tone', message: `七段顺序应为 主·互·变·断·宜·忌·应期，实际为 ${labels}` });
-  }
-  if (m.record.chart?.lines && m.record.chart.lines.length !== 6) {
-    semantic.push({ path: 'chart.lines', message: `六爻应为 6 个元素，实际 ${m.record.chart.lines.length}` });
-  }
-  if (m.record.chart?.moving?.position && m.record.chart?.lines) {
-    const isYang = m.record.chart.lines[m.record.chart.moving.position - 1] === 1;
-    if (isYang !== m.record.chart.moving.isYang) {
-      semantic.push({ path: 'chart.moving.isYang', message: '动爻阴阳与六爻数据不一致' });
+  if (m.record.chart?.kind === 'xlr') {
+    semantic.push(...checkXlrSemantics(m.record));
+  } else {
+    if (m.record.reading?.tone) {
+      const labels = m.record.reading.tone.map((t) => t.label).join('');
+      if (labels !== '主互变断宜忌应期') semantic.push({ path: 'reading.tone', message: `七段顺序应为 主·互·变·断·宜·忌·应期，实际为 ${labels}` });
+    }
+    if (m.record.chart?.lines && m.record.chart.lines.length !== 6) {
+      semantic.push({ path: 'chart.lines', message: `六爻应为 6 个元素，实际 ${m.record.chart.lines.length}` });
+    }
+    if (m.record.chart?.moving?.position && m.record.chart?.lines) {
+      const isYang = m.record.chart.lines[m.record.chart.moving.position - 1] === 1;
+      if (isYang !== m.record.chart.moving.isYang) {
+        semantic.push({ path: 'chart.moving.isYang', message: '动爻阴阳与六爻数据不一致' });
+      }
     }
   }
   return push(name, r.valid && !semantic.length, [...r.errors, ...semantic], {
     migratedFrom: m.applied.length ? m.from : undefined,
   });
+}
+
+/**
+ * 小六壬记录的语义约定：
+ *   宫位段与起课方式对应（月日时辰恒三宫；报数有几数显几宫）、
+ *   末四段恒为 断·宜·忌·应期、结果宫与末宫一致。
+ */
+function checkXlrSemantics(record) {
+  const out = [];
+  const tone = record.reading?.tone || [];
+  const palaceLabels = tone.slice(0, Math.max(0, tone.length - 4)).map((t) => t.label);
+  const method = record.cast?.method;
+  const n = Array.isArray(record.cast?.numbers) ? record.cast.numbers.length : 0;
+  const expected = method === 'xlrTime'
+    ? ['月宫', '日宫', '时宫']
+    : n === 1 ? ['末宫'] : n === 2 ? ['初宫', '末宫'] : ['初宫', '次宫', '末宫'];
+  const labels = tone.map((t) => t.label).join('');
+  if (tone.length && tone.slice(-4).map((t) => t.label).join('') !== '断宜忌应期') {
+    out.push({ path: 'reading.tone', message: `小六壬断课末四段应为 断·宜·忌·应期，实际为 ${labels}` });
+  }
+  if (palaceLabels.join('') !== expected.join('')) {
+    out.push({ path: 'reading.tone', message: `宫位段应为 ${expected.join('·')}，实际为 ${palaceLabels.join('·') || '（空）'}` });
+  }
+  const palaces = record.chart?.palaces || [];
+  if (palaces.length !== expected.length) {
+    out.push({ path: 'chart.palaces', message: `三宫应与起课方式对应（${expected.length} 项），实际 ${palaces.length} 项` });
+  }
+  const last = palaces[palaces.length - 1];
+  if (last && record.chart?.result && last.name !== record.chart.result.name) {
+    out.push({ path: 'chart.result', message: `结果宫应为末宫「${last.name}」，实际为「${record.chart.result.name}」` });
+  }
+  if (!palaces.every((p) => p.grade?.label)) {
+    out.push({ path: 'chart.palaces', message: '各宫都应带吉凶（grade.label）' });
+  }
+  return out;
 }
 
 /** 一个 AI 会话。除了结构，再查两处语义：版本对不对、附件清单有没有重复 */

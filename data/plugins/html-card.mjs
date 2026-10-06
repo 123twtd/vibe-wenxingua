@@ -44,7 +44,115 @@ const REL_GLYPH = {
   ti_sheng_yong: '体 ▸生▸ 用', bihe: '体 ≡ 用',
 };
 
-function buildHtml(rec) {
+/**
+ * 小六壬卦录的离线卡片：三宫版式。
+ * 小六壬的 chart 里没有六爻与体用——直接取那些字段会抛，所以单独走这一路；
+ * 版式与梅花的卡片同气（同一套色），但内容只讲六宫、六神与末宫断辞。
+ */
+function buildXlrHtml(rec) {
+  const c = rec.chart;
+  const r = rec.reading;
+  const cal = c.calendar || {};
+  const tone = (r?.tone || []).map((x) => `<div class="tone${x.key === 'ji' ? ' warn' : ''}">
+      <div class="lb">${ESC(x.label)}</div><div class="tx">${ESC(x.text)}</div></div>`).join('');
+  const plain = r?.plain ? `
+    <section><h2>通 俗 解</h2>
+      <p class="one">${ESC(r.plain.oneLine)}</p>
+      <p class="lbl">要旨</p><p>${ESC(r.plain.focus)}</p>
+      <p class="lbl">为什么这样说</p><ul>${r.plain.why.map((w) => `<li>${ESC(w)}</li>`).join('')}</ul>
+      <p class="lbl">怎么做</p><ul>${r.plain.how.map((w) => `<li>${ESC(w)}</li>`).join('')}</ul>
+    </section>` : '';
+  const review = (rec.review?.result || rec.review?.log?.length) ? `
+    <section><h2>复 盘</h2>
+      <p>状态：<b>${ESC(rec.review.status)}</b>${rec.review.reviewedAt ? `　复盘于 ${ESC(rec.review.reviewedAt)}` : ''}</p>
+      ${rec.review.result ? `<p>${ESC(rec.review.result)}</p>` : ''}
+      ${(rec.review.log || []).map((e) => `<blockquote>${ESC(e.text)}<cite>${ESC(e.at || '')}</cite></blockquote>`).join('')}
+    </section>` : '';
+  const palaces = (c.palaces || []).map((p, i, arr) => `<div class="pal${i === arr.length - 1 ? ' last' : ''}">
+      <div class="role">${ESC(p.role)}${i === arr.length - 1 ? '　结果宫' : ''}</div>
+      <div class="nm">${ESC(p.name)}</div>
+      <div class="mn">${ESC(p.deity)}　${ESC(p.element)}　${ESC(p.direction)}　神数 ${ESC(p.spiritText)}</div>
+      <div class="ft">${ESC(p.grade?.label || '')}</div>
+      <div class="kj">${ESC(p.koujue)}</div></div>`).join('');
+
+  return `<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${ESC(rec.title)} · 问心卦（小六壬）</title>
+<style>
+:root{--ink:#0b0e13;--card:#161c26;--gold:#c9a227;--gold2:#e8c86a;--gold3:#f6e3a8;
+--red:#d8604a;--az:#5b8cc7;--tx:#e9e3d6;--tx2:#a79e8d;--tx3:#6f6759;--ln:#2a3341}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--ink);background-image:radial-gradient(1100px 600px at 12% -8%,rgba(201,162,39,.07),transparent 62%);
+color:var(--tx);font-family:"Noto Serif SC","Source Han Serif SC","Songti SC",SimSun,Georgia,serif;
+font-size:15px;line-height:1.9;padding:34px 18px 70px}
+.wrap{max-width:760px;margin:0 auto}
+h1{font-size:26px;letter-spacing:4px;color:var(--gold3);font-weight:500;line-height:1.5}
+.sub{color:var(--tx2);font-size:13px;margin-top:8px;letter-spacing:.6px}
+section{background:linear-gradient(158deg,var(--card),#11151d);border:1px solid var(--ln);
+border-radius:14px;padding:22px 24px;margin-top:18px}
+h2{font-size:15px;letter-spacing:3px;color:var(--gold2);font-weight:500;margin-bottom:14px}
+h2::before{content:"◆";font-size:8px;color:var(--gold);margin-right:9px;vertical-align:2px}
+.sig{font-size:19px;letter-spacing:5px;color:var(--gold3);text-align:center;padding:24px 18px;line-height:2.1;
+background:linear-gradient(150deg,rgba(201,162,39,.1),rgba(178,58,44,.05));border:1px solid rgba(201,162,39,.28);
+border-radius:14px;margin-top:18px;text-shadow:0 0 24px rgba(201,162,39,.28)}
+.sig::before{content:"谶";display:block;font-size:11px;letter-spacing:6px;color:var(--gold);margin-bottom:8px}
+.palrow{display:flex;gap:14px;flex-wrap:wrap}
+.pal{flex:1 1 190px;padding:15px 16px;border:1px solid #364152;border-radius:12px;
+background:linear-gradient(160deg,rgba(201,162,39,.06),transparent)}
+.pal.last{border-color:rgba(201,162,39,.45);box-shadow:0 0 22px rgba(201,162,39,.12)}
+.pal .role{font-size:11px;letter-spacing:3.4px;color:var(--gold)}
+.pal .nm{font-size:24px;letter-spacing:4px;color:var(--gold3);margin:4px 0 2px}
+.pal .mn{font-size:12px;color:var(--tx2)}
+.pal .ft{font-size:12px;color:var(--az);margin-top:3px}
+.pal .kj{font-size:12px;color:var(--tx3);margin-top:9px;border-top:1px dashed var(--ln);padding-top:8px}
+.tone{display:grid;grid-template-columns:52px 1fr;gap:12px;padding:13px 0;border-bottom:1px dashed var(--ln)}
+.tone:last-child{border-bottom:0}
+.tone .lb{font-size:15px;letter-spacing:3px;color:var(--gold2);text-align:center;border-right:1px solid #364152;padding-right:8px}
+.tone.warn .lb{color:var(--red)}
+.tone .tx{color:#ded7c8;font-size:15px;line-height:2.05}
+.one{font-size:15.5px;color:#dfe7f0}
+.lbl{font-size:12px;letter-spacing:2.4px;color:var(--az);margin:14px 0 4px}
+ul{margin-left:20px}li{color:var(--tx2);font-size:14px}
+blockquote{padding:11px 14px;border-radius:0 10px 10px 0;background:rgba(201,162,39,.055);
+border-left:3px solid var(--gold);margin-bottom:9px;color:#cfc5b0;font-size:14.5px}
+blockquote cite{display:block;text-align:right;font-size:11.5px;color:var(--tx3);font-style:normal;margin-top:3px}
+dl{display:grid;grid-template-columns:96px 1fr;gap:5px 12px;font-size:13.5px}
+dt{color:var(--tx3)}dd{color:var(--tx)}
+footer{text-align:center;margin-top:34px;font-size:11.5px;color:var(--tx3);letter-spacing:2px}
+</style></head><body><div class="wrap">
+<h1>${ESC(rec.title)}</h1>
+<div class="sub">小六壬 · ${ESC(c.chainText || '')}　末宫 ${ESC(c.result?.name || '')}　${ESC(c.result?.grade?.label || '')}
+　·　${ESC(rec.category)}　·　编号 ${ESC(rec.id)}<br>
+起课 ${ESC(cal.dateTime || rec.cast?.localTime || '')}${c.lunar ? `　·　农历 ${ESC(c.lunar.year)}年${ESC(c.lunar.monthName)}${ESC(c.lunar.dayName)}` : ''}${cal.placeName ? `　·　${ESC(cal.placeName)}` : ''}
+　·　真太阳时 ${ESC(cal.trueSolarTime || '')}　${ESC(cal.trueHourZhi || '')}时（取数 ${ESC(cal.trueHourNumber ?? '')}）</div>
+
+${rec.question ? `<section><h2>所 问 之 事</h2><p>${ESC(rec.question)}</p></section>` : ''}
+
+<section><h2>三 宫</h2><div class="palrow">${palaces}</div></section>
+
+${r ? `<div class="sig">${ESC(r.signature)}</div>
+<section><h2>断 课 定 调</h2>${tone}</section>
+${plain}` : ''}
+${review}
+
+<section><h2>起 课 推 演 与 历 法</h2>
+  <ol style="margin-left:20px;color:var(--tx2);font-size:13.5px">${(c.casting?.steps || []).map((s) => `<li>${ESC(s)}</li>`).join('')}</ol>
+  <dl style="margin-top:14px">
+    <dt>钟表时间</dt><dd>${ESC(cal.dateTime || '')}</dd>
+    <dt>真太阳时</dt><dd>${ESC(cal.trueSolarTime || '')}　${ESC(cal.trueHourZhi || '')}时（取数 ${ESC(cal.trueHourNumber ?? '')}）</dd>
+    <dt>农历</dt><dd>${ESC(c.lunar ? `${c.lunar.year}年${c.lunar.monthName}${c.lunar.dayName}${c.lunar.isLeap ? '（闰月按本月计）' : ''}` : '（按公历月日起课）')}</dd>
+    <dt>总断</dt><dd>${ESC(r?.grade?.label || '')}— ${ESC(r?.grade?.desc || '')}</dd>
+  </dl>
+</section>
+
+<footer>问心卦 · 卦录 ${ESC(rec.id)} · 录于 ${ESC(rec.createdAt)}<br>小六壬之课仅供参考，决断在己。</footer>
+</div></body></html>`;
+}
+
+function buildHtml(rec, core) {
+  const isXlr = core?.xiaoliuren?.isXlrChart ? core.xiaoliuren.isXlrChart(rec.chart) : rec.chart?.kind === 'xlr';
+  if (isXlr) return buildXlrHtml(rec);
   const c = rec.chart;
   const r = rec.reading;
   const cal = c.calendar || {};
@@ -200,7 +308,7 @@ export default {
       label: '单卦 HTML 卡片（离线单文件）',
       ext: 'html',
       mime: 'text/html; charset=utf-8',
-      render: (rec) => buildHtml(rec),
+      render: (rec) => buildHtml(rec, ctx.core),
     });
 
     ctx.on('record.created', (rec) => ctx.log(`卦录 ${rec.id} 可导出为 HTML 卡片`));

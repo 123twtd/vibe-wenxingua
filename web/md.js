@@ -127,7 +127,10 @@ export function renderMarkdown(src) {
       i += 1;
     }
     closeLists();
-    out.push(`<p class="md-p">${inline(buf.join('<br>'))}</p>`);
+    /* 折行的 `<br>` 必须在 inline() **之外**拼：inline() 头一件事就是 esc()，
+       拼进去再 inline 的话 `<br>` 会被转成 `&lt;br&gt;`——用户看到的正是满屏字面
+       `<br>`（导入的 DeepSeek 原文几乎每段都有换行，于是整页都是）。 */
+    out.push(`<p class="md-p">${buf.map((l) => inline(l)).join('<br>')}</p>`);
   }
   closeLists();
   return out.join('\n');

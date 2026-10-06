@@ -53,6 +53,41 @@ const f6 = path.join(tmp, 'bad6.json');
 fs.writeFileSync(f6, JSON.stringify(bad6, null, 2), 'utf8');
 cases.push(['类别不在枚举里', f6, true]);
 
+// —— 小六壬记录（另一种占法）的负向用例 ——
+const xlrRec = sampleRecords().find((r) => r.chart?.kind === 'xlr');
+
+// 7) 小六壬断课段顺序被打乱（宫位段与断宜忌应期错位）
+const bad7 = JSON.parse(JSON.stringify(xlrRec));
+bad7.id = '202601010000-95';
+bad7.reading.tone = [...bad7.reading.tone].reverse();
+const f7 = path.join(tmp, 'bad7.json');
+fs.writeFileSync(f7, JSON.stringify(bad7, null, 2), 'utf8');
+cases.push(['小六壬断课段顺序被打乱', f7, true]);
+
+// 8) 小六壬三宫少一项（与起课方式对不上）
+const bad8 = JSON.parse(JSON.stringify(xlrRec));
+bad8.id = '202601010000-94';
+bad8.chart.palaces = bad8.chart.palaces.slice(0, 2);
+const f8 = path.join(tmp, 'bad8.json');
+fs.writeFileSync(f8, JSON.stringify(bad8, null, 2), 'utf8');
+cases.push(['小六壬三宫数与起课方式不符', f8, true]);
+
+// 9) 小六壬删掉结果宫（schema 的 oneOf 两支都不再满足）
+const bad9 = JSON.parse(JSON.stringify(xlrRec));
+bad9.id = '202601010000-93';
+delete bad9.chart.result;
+const f9 = path.join(tmp, 'bad9.json');
+fs.writeFileSync(f9, JSON.stringify(bad9, null, 2), 'utf8');
+cases.push(['小六壬缺结果宫', f9, true]);
+
+// 10) 小六壬宫位段用了梅花的说法（术语混用）
+const bad10 = JSON.parse(JSON.stringify(xlrRec));
+bad10.id = '202601010000-92';
+bad10.reading.tone[0] = { ...bad10.reading.tone[0], key: 'main', label: '主' };
+const f10 = path.join(tmp, 'bad10.json');
+fs.writeFileSync(f10, JSON.stringify(bad10, null, 2), 'utf8');
+cases.push(['小六壬宫位段混入梅花术语文案', f10, true]);
+
 let pass = 0;
 let fail = 0;
 for (const [label, file, shouldFail] of cases) {

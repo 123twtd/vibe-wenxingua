@@ -337,7 +337,10 @@ function confirmCard(m) {
 
 function entryHtml(m) {
   if (m.role === 'user') {
-    return `<div class="msg user">${h(m.content)}</div>`;
+    /* 用户自己打的字也走 Markdown 渲染。早先这里只做 HTML 转义（h()），
+       HTML 会把换行折成一个空格——用户分五行写的整段话，屏幕上挤成一大坨，
+       换行、列表、加粗全没了。renderMarkdown 本身会转义，不会漏出标签。 */
+    return `<div class="msg user">${renderMarkdown(m.content)}</div>`;
   }
   if (m.role === 'thinking') {
     // 思维链与「调工具前的交代」分两种名头：前者是模型的推理过程，后者是它的说明。

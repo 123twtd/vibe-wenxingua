@@ -405,6 +405,9 @@ label.fld .hint { font-size: 10.5px; color: var(--ink-3); letter-spacing: 0; mar
 .tag.warn { color: var(--warn); border-color: var(--rule-2); background: var(--tint-1); }
 .tag.bad { color: var(--bad-2); border-color: var(--edge-bad); background: var(--tint-bad); }
 .tag.neutral { color: var(--ink-2); }
+/* 占法徽章：梅花与小六壬各用一色，列表与详情头一眼分得清 */
+.tag.meihua { color: var(--accent-2); background: var(--tint-1); }
+.tag.xlr { color: var(--info); border-color: rgba(74, 111, 156, .4); background: rgba(74, 111, 156, .08); }
 
 .muted { color: var(--ink-2); }
 .dim { color: var(--ink-3); }
@@ -443,6 +446,25 @@ label.fld .hint { font-size: 10.5px; color: var(--ink-3); letter-spacing: 0; mar
 .hex-box .nm { font-size: 14px; letter-spacing: 1.8px; }
 .hex-box .mn { font-size: 11px; color: var(--ink-2); margin-top: 2px; }
 .hex-box .ft { font-size: 10.5px; color: var(--ink-3); letter-spacing: .8px; }
+
+/* 小六壬：三宫版式（与梅花的六爻／体用分区渲染，不混排） */
+.xlr-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.xlr-box {
+  flex: 1 1 150px; padding: 9px 10px;
+  background: var(--tint-1);
+  border: 1px solid var(--rule-2); border-radius: var(--radius);
+}
+.xlr-box.result { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(158, 43, 37, .15); }
+.xlr-box .role { font-size: 10px; letter-spacing: 2.4px; color: var(--accent); }
+.xlr-box .nm { font-size: 20px; letter-spacing: 3px; color: var(--ink); line-height: 1.5; }
+.xlr-box .mn { font-size: 10.5px; color: var(--ink-2); }
+.xlr-box .ft { font-size: 10.5px; color: var(--info); letter-spacing: .8px; }
+.xlr-box .kj {
+  font-size: 10.5px; color: var(--ink-3); margin-top: 6px;
+  border-top: 1px dashed var(--rule); padding-top: 5px; line-height: 1.8;
+}
+.xlr-chain { margin-top: 8px; font-size: 11px; color: var(--ink-2); letter-spacing: .7px; }
+.rec .viz .s.xlr { color: var(--info); }
 
 .liuyao { display: flex; flex-direction: column; gap: 4px; align-items: center; padding: 2px 0; }
 .liuyao .row { display: flex; align-items: center; gap: 10px; width: 100%; justify-content: center; }
@@ -540,6 +562,8 @@ label.fld .hint { font-size: 10.5px; color: var(--ink-3); letter-spacing: 0; mar
 .md-h { color: var(--accent-2); letter-spacing: 1.4px; margin: 10px 0 5px; font-weight: 500; }
 h2.md-h { font-size: 15px; } h3.md-h { font-size: 13.5px; } h4.md-h, h5.md-h, h6.md-h { font-size: 12.5px; }
 .md-p { color: var(--ink); margin-bottom: 6px; font-size: 12.5px; line-height: 1.8; }
+/* 段落里的 <br> 是**换行**，不是新段落：聊天气泡里的最后一行不该再撑一段间距 */
+.msg .md-p:last-child { margin-bottom: 0; }
 .md-list { margin: 4px 0 7px 19px; }
 .md-list li { color: var(--ink); font-size: 12.5px; margin-bottom: 2px; }
 .md-quote { border-left: 2px solid var(--accent); background: var(--tint-1); padding: 6px 11px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; margin: 7px 0; }
@@ -607,6 +631,21 @@ code { font-family: var(--mono); background: var(--surface-3); padding: 0 4px; b
   box-shadow: var(--shadow-md); z-index: 400; animation: up .18s ease-out;
 }
 @keyframes up { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* 版本更新横幅：挂在顶栏下沿的一条提示，固定定位、不挤动布局。
+   只在检测到新发行版时出现；「查看更新」去发行页，✕ 关掉就安静到下次启动。 */
+.update-banner {
+  display: none; position: fixed; left: 0; right: 0; top: var(--top-h); z-index: 250;
+  align-items: center; gap: 10px; padding: 7px 14px;
+  background: var(--tint-1); border-bottom: 1px solid var(--accent); box-shadow: var(--shadow-md);
+  font-size: 12.5px; color: var(--ink-2); line-height: 1.6;
+  animation: down .18s ease-out;
+}
+.update-banner.on { display: flex; }
+.update-banner .ub-ic { color: var(--accent); font-size: 14px; flex: none; }
+.update-banner b { color: var(--accent-3); }
+.update-banner .sp { flex: 1; }
+@keyframes down { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 
 .fade { animation: fade .2s ease-out; }
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }

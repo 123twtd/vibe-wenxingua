@@ -10,7 +10,7 @@
     "schema": {
       "type": "integer",
       "minimum": 1,
-      "description": "结构版本号。当前为 3（v2 增 yingqi；v3 增 background／plan／collation／qa 四项补充存录）。升级路径见 core/migrate.mjs。"
+      "description": "结构版本号。当前为 4（v2 增 yingqi；v3 增 background／plan／collation／qa 四项补充存录；v4 收录小六壬——cast.method 增两项、chart／reading 允许三宫形态）。升级路径见 core/migrate.mjs。"
     },
     "id": {
       "type": "string",
@@ -31,8 +31,13 @@
       "properties": {
         "method": {
           "type": "string",
-          "enum": ["numberAndTime", "twoNumbers", "timeOnly", "manual"],
-          "description": "numberAndTime＝一数＋时辰；twoNumbers＝两数；timeOnly＝年月日时；manual＝已知本卦与动爻。"
+          "enum": ["numberAndTime", "twoNumbers", "timeOnly", "manual", "xlrNumbers", "xlrTime"],
+          "description": "起卦法。numberAndTime＝一数＋时辰；twoNumbers＝两数；timeOnly＝年月日时；manual＝已知本卦与动爻；xlrNumbers＝小六壬报数起课（一至三数）；xlrTime＝小六壬月日时辰起课（月与日按 calendarType）。"
+        },
+        "calendarType": {
+          "type": "string",
+          "enum": ["lunar", "solar"],
+          "description": "小六壬月日时辰起课：月与日按农历（lunar，默认，闰月按本月计）还是公历（solar）数字。仅 xlrTime 有意义。"
         },
         "numbers": {
           "type": "array",
@@ -58,60 +63,134 @@
       "additionalProperties": true
     },
     "chart": {
-      "type": "object",
-      "description": "卦局快照：本卦／互卦／变卦／六爻／动爻／体用／旺衰／吉凶评分／历法。结构随内核演进，故此处不锁死。",
-      "required": ["ben", "hu", "bian", "moving", "tiyong", "score", "calendar"],
-      "additionalProperties": true
+      "description": "卦局快照。梅花走六爻／体用；小六壬走三宫／末宫——两种形态靠 oneOf 分别约束，结构随内核演进，具体字段不锁死。",
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "梅花易数卦局：本卦／互卦／变卦／六爻／动爻／体用／旺衰／吉凶评分／历法。",
+          "required": ["ben", "hu", "bian", "moving", "tiyong", "score", "calendar"],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "小六壬之课：三宫（末位为结果宫）＋起课推演＋历法；不设六爻与体用。",
+          "required": ["kind", "palaces", "result", "casting", "calendar"],
+          "properties": {
+            "kind": { "const": "xlr", "description": "小六壬的判别位；老记录没有它，即视为梅花。" },
+            "palaces": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 3,
+              "description": "三宫：月日时辰起课恒三项（月宫／日宫／时宫）；报数起课有几数显几宫（初宫／[次宫]／末宫）。末位恒为结果宫。"
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
     },
     "reading": {
-      "type": "object",
-      "description": "断语快照：谶 ＋ 七段定调 ＋ 通俗解 ＋ 古辞佐证。",
-      "required": ["signature", "tone", "plain", "grade"],
-      "properties": {
-        "signature": { "type": "string", "description": "谶语：一卦气质最重处。" },
-        "tone": {
-          "type": "array",
-          "minItems": 7,
-          "maxItems": 7,
-          "description": "七段定调，顺序为 主、互、变、断、宜、忌、应期。",
-          "items": {
-            "type": "object",
-            "required": ["key", "label", "text"],
-            "properties": {
-              "key": { "type": "string", "enum": ["main", "hu", "bian", "duan", "yi", "ji", "yingqi"] },
-              "label": { "type": "string", "enum": ["主", "互", "变", "断", "宜", "忌", "应期"] },
-              "text": { "type": "string", "minLength": 4 }
+      "description": "断语快照：谶 ＋ 定调 ＋ 通俗解。梅花为七段（主·互·变·断·宜·忌·应期）；小六壬为三宫＋断宜忌应期——两种形态靠 oneOf 分别约束。",
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "梅花易数的七段定调。",
+          "required": ["signature", "tone", "plain", "grade"],
+          "properties": {
+            "signature": { "type": "string", "description": "谶语：一卦气质最重处。" },
+            "tone": {
+              "type": "array",
+              "minItems": 7,
+              "maxItems": 7,
+              "description": "七段定调，顺序为 主、互、变、断、宜、忌、应期。",
+              "items": {
+                "type": "object",
+                "required": ["key", "label", "text"],
+                "properties": {
+                  "key": { "type": "string", "enum": ["main", "hu", "bian", "duan", "yi", "ji", "yingqi"] },
+                  "label": { "type": "string", "enum": ["主", "互", "变", "断", "宜", "忌", "应期"] },
+                  "text": { "type": "string", "minLength": 4 }
+                },
+                "additionalProperties": false
+              }
             },
-            "additionalProperties": false
-          }
-        },
-        "classical": { "type": "object", "description": "古辞佐证：卦辞、大象辞、爻辞、互卦／变卦象辞。", "additionalProperties": true },
-        "plain": {
-          "type": "object",
-          "required": ["oneLine", "focus", "why", "how"],
-          "properties": {
-            "oneLine": { "type": "string", "description": "一句话结论。" },
-            "focus": { "type": "string", "description": "要旨。" },
-            "why": { "type": "array", "items": { "type": "string" }, "description": "为什么这样说。" },
-            "how": { "type": "array", "items": { "type": "string" }, "description": "怎么做。" }
+            "classical": { "type": "object", "description": "古辞佐证：卦辞、大象辞、爻辞、互卦／变卦象辞。", "additionalProperties": true },
+            "plain": {
+              "type": "object",
+              "required": ["oneLine", "focus", "why", "how"],
+              "properties": {
+                "oneLine": { "type": "string", "description": "一句话结论。" },
+                "focus": { "type": "string", "description": "要旨。" },
+                "why": { "type": "array", "items": { "type": "string" }, "description": "为什么这样说。" },
+                "how": { "type": "array", "items": { "type": "string" }, "description": "怎么做。" }
+              },
+              "additionalProperties": true
+            },
+            "grade": {
+              "type": "object",
+              "required": ["key", "label", "tone"],
+              "properties": {
+                "key": { "type": "string", "enum": ["daji", "ji", "zhongji", "ping", "xiaoxiong", "xiong"] },
+                "label": { "type": "string", "enum": ["大吉", "吉", "中吉", "平", "小凶", "凶"] },
+                "tone": { "type": "string", "enum": ["good", "neutral", "warn", "bad"] },
+                "desc": { "type": "string" }
+              },
+              "additionalProperties": true
+            },
+            "category": { "type": "string" },
+            "generatedBy": { "type": "string", "description": "生成此断语的引擎标识，便于日后判断是否需要重算。" }
           },
           "additionalProperties": true
         },
-        "grade": {
+        {
           "type": "object",
-          "required": ["key", "label", "tone"],
+          "description": "小六壬的断课：三宫（或两宫／一宫）＋断·宜·忌·应期。",
+          "required": ["signature", "tone", "plain", "grade"],
           "properties": {
-            "key": { "type": "string", "enum": ["daji", "ji", "zhongji", "ping", "xiaoxiong", "xiong"] },
-            "label": { "type": "string", "enum": ["大吉", "吉", "中吉", "平", "小凶", "凶"] },
-            "tone": { "type": "string", "enum": ["good", "neutral", "warn", "bad"] },
-            "desc": { "type": "string" }
+            "signature": { "type": "string", "description": "末宫谶语：一课气质最重处。" },
+            "tone": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 7,
+              "description": "宫位段（月宫／日宫／时宫，或初宫／[次宫]／末宫）在前，末尾恒为 断、宜、忌、应期。",
+              "items": {
+                "type": "object",
+                "required": ["key", "label", "text"],
+                "properties": {
+                  "key": { "type": "string", "enum": ["palace1", "palace2", "palace3", "duan", "yi", "ji", "yingqi"] },
+                  "label": { "type": "string", "enum": ["初宫", "次宫", "末宫", "月宫", "日宫", "时宫", "断", "宜", "忌", "应期"] },
+                  "text": { "type": "string", "minLength": 4 }
+                },
+                "additionalProperties": false
+              }
+            },
+            "plain": {
+              "type": "object",
+              "required": ["oneLine", "focus", "why", "how"],
+              "properties": {
+                "oneLine": { "type": "string", "description": "一句话结论。" },
+                "focus": { "type": "string", "description": "要旨。" },
+                "why": { "type": "array", "items": { "type": "string" }, "description": "为什么这样说。" },
+                "how": { "type": "array", "items": { "type": "string" }, "description": "怎么做。" }
+              },
+              "additionalProperties": true
+            },
+            "grade": {
+              "type": "object",
+              "required": ["key", "label", "tone"],
+              "properties": {
+                "key": { "type": "string", "enum": ["daji", "ji", "zhongji", "ping", "xiaoxiong", "xiong"] },
+                "label": { "type": "string", "enum": ["大吉", "吉", "中吉", "平", "小凶", "凶"] },
+                "tone": { "type": "string", "enum": ["good", "neutral", "warn", "bad"] },
+                "desc": { "type": "string" }
+              },
+              "additionalProperties": true
+            },
+            "category": { "type": "string" },
+            "generatedBy": { "type": "string", "description": "生成此断课的引擎标识，便于日后判断是否需要重算。" }
           },
           "additionalProperties": true
-        },
-        "category": { "type": "string" },
-        "generatedBy": { "type": "string", "description": "生成此断语的引擎标识，便于日后判断是否需要重算。" }
-      },
-      "additionalProperties": true
+        }
+      ]
     },
     "claimed": {
       "type": ["object", "null"],

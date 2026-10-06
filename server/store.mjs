@@ -207,13 +207,23 @@ export class Store {
       acc[k] = (acc[k] || 0) + 1;
       return acc;
     }, {});
+    // 卦名与体用是梅花专有的语义：小六壬记录不进这两桶，
+    // 否则「未定」里会混进整批小六壬记录，把这一桶的含义搅糊。
+    const meihua = all.filter((r) => r.chart?.ben || r.chart?.tiyong);
+    const byM = (fn) => meihua.reduce((acc, r) => {
+      const k = fn(r) || '未定';
+      acc[k] = (acc[k] || 0) + 1;
+      return acc;
+    }, {});
     return {
       total: all.length,
       byCategory: by((r) => r.category),
       byGrade: by((r) => r.reading?.grade?.label),
-      byBen: by((r) => r.chart?.ben?.fullName),
-      byRelation: by((r) => r.chart?.tiyong?.relation?.label),
+      byBen: byM((r) => r.chart?.ben?.fullName),
+      byRelation: byM((r) => r.chart?.tiyong?.relation?.label),
+      byMethod: by((r) => r.cast?.method),
       byReview: by((r) => r.review?.status),
+      xlrCount: all.filter((r) => r.chart?.kind === 'xlr').length,
       corrections: all.filter((r) => (r.corrections || []).length).length,
       first: all.length ? all[all.length - 1].cast?.localTime : null,
       last: all.length ? all[0].cast?.localTime : null,
@@ -231,6 +241,12 @@ const DEFAULT_CONFIG = {
   theme: 'ink',
   plugins: {},
   backupDir: 'backups',
+  /** 上一次「看过更新内容」的版本号。与当前版本不一致时，界面弹一次更新说明卡，
+   *  关闭即把它更新为当前版本——同一版不再打扰，直到下一版。 */
+  lastSeenVersion: '',
+  /** 启动时是否去 GitHub 查一次新发行版（本程序唯一的主动外呼，见 docs/11）。
+   *  关掉之后程序完全不出网。失败一律静默，绝不影响使用。 */
+  updateCheck: true,
   /** AI 助手配置。apiKey 以明文存在本机 data/config.json 里——这是本地程序，
    *  但请勿把该文件提交到公开仓库，也不要放在同步盘上。 */
   agent: {

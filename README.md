@@ -7,20 +7,20 @@
 
 ## 一、这是什么
 
-「问心卦」是一个**跑在你自己电脑上的卦录软件**，有**桌面版**（Electron，双击即开）与命令行版两种形态。不需要联网（除了你自己开的 AI 助手），不需要账号，零第三方依赖（内核只用 Node 内置模块）。
+「问心卦」是一个**跑在你自己电脑上的卦录软件**，有**桌面版**（Electron，双击即开）与命令行版两种形态。不需要联网（两条例外都可以不由程序发起：你自己开的 AI 助手，以及启动时看一眼 GitHub 有没有新版本——后者在设置里一键关掉，关掉后程序完全不出网），不需要账号，零第三方依赖（内核只用 Node 内置模块）。
 
 它做六件事：
 
 | | |
 |---|---|
-| **起卦** | 报数、择时、定地，按梅花易数正法起卦，即时给出卦象与断语 |
+| **起卦** | 报数、择时、定地，按梅花易数正法起卦，即时给出卦象与断语；另收录**道教传统小六壬**（三宫之课，末宫为主断） |
 | **导入** | 三种入口同一套解析器：粘贴对话文本、写「卦条」纯文本、命令行导入；自动认出卦、爻、时、数、体用，复核后入库 |
 | **存录** | 一条卦录一个 JSON 文件，含全部时间与历法信息、卦象、断语、原文、复盘；有正式的 JSON Schema 与版本迁移 |
 | **断语** | 体用生克定骨、月令旺衰定气、本互变三卦之卦德定肉、动爻之辞定应——**文言定调 + 白话解释**两层 |
 | **走势** | 把卦录按时间铺开，**多个领域叠在同一张图里**：总评分、体用生克、变卦对体、体卦旺衰、体卦刚柔；另有五行占比、分类别均值 |
 | **AI 助手** | 一个能真正动手的 agent：自己调工具起卦、存档、写复盘、看走势。**卦象一律由引擎算出，模型不许编**；同一套工具也走 **MCP**，Codex / Claude / DSH 可直接驱动 |
 
-外加：**校勘**（照出当初口头解读里与本程序重算不符的地方）、**复盘**（记录后来实际如何）、**插件系统**（改完不用重启）、**Hermes 信使层**（统一接多家模型，协议不一致与网络抖动在这一层收敛）。
+外加：**校勘**（照出当初口头解读里与本程序重算不符的地方）、**复盘**（记录后来实际如何）、**插件系统**（改完不用重启）、**Hermes 信使层**（统一接多家模型，协议不一致与网络抖动在这一层收敛）、**版本更替看得见**（打开新版本时弹一次「这一版更新了什么」，看过即记下；启动时顺带问一次 GitHub 有没有新发行版，有就在顶部挂一条提示）。
 
 > 需要给编码 agent 的项目说明（改代码前先读）：[AGENTS.md](AGENTS.md)。
 > 数据格式的规范文本：[docs/规范.md](docs/规范.md)。
@@ -45,7 +45,7 @@
 
 仓库里**不含安装包**（二进制不进 git，走 Releases）。两条路：
 
-- **直接下载**：[Releases · v1.1.0](https://github.com/123twtd/vibe-wenxingua/releases/latest) → `wenxingua-1.1.0-setup.exe`（约 78 MB，中文向导，双击安装）
+- **直接下载**：[Releases · v1.3.0](https://github.com/123twtd/vibe-wenxingua/releases/latest) → `wenxingua-1.3.0-setup.exe`（约 78 MB，中文向导，双击安装）
 - **自己打**，约两分钟：
 
 ```
@@ -115,7 +115,7 @@ node server/index.mjs --port 8080   # 换端口
   ┌──────────────────────────────────────────────┐
   │            问  心  卦   ·   卦录台            │
   └──────────────────────────────────────────────┘
-   版本      v1.1.0
+   版本      v1.3.0
    地址      http://127.0.0.1:19730/
    数据目录  …\问心卦\data
 ```
@@ -446,13 +446,13 @@ Claude Code / DSH（`.mcp.json`）：
 │  ├─ seed.mjs             把成对的对话记录批量录成卦录（语料自备，路径作参数）
 │  ├─ import.mjs           命令行导入（卦条 / 对话文本 / JSON）
 │  ├─ validate.mjs         按 schema 校验
-│  ├─ check.mjs            内核自检（210 项）
+│  ├─ check.mjs            内核自检（243 项）
 │  ├─ check-hermes.mjs     Hermes 协议/路由/策略自检（63 项，全离线）
-│  ├─ check-web.mjs        前端联调自检（91 项，连不上服务时自起示例服务）
+│  ├─ check-web.mjs        前端联调自检（108 项，连不上服务时自起示例服务）
 │  ├─ check-mcp.mjs        MCP stdio 自检（14 项）
 │  ├─ check-desktop.mjs    桌面版自检（51 项，真起 Electron 窗口）
 │  ├─ check-docs.mjs       文档与代码一致性（27 项）
-│  └─ check-validate.mjs   校验器负向测试（6 项）
+│  └─ check-validate.mjs   校验器负向测试（10 项）
 └─ data/                   ← 你的东西都在这里
    ├─ records/             一条卦录一个 JSON
    ├─ chats/               AI 会话（一段对话一个 JSON；附件在 chats/<id>/files/）
@@ -584,18 +584,18 @@ export default {
 改了任何东西之后跑一遍：
 
 ```bash
-node tools/check.mjs           # 内核：卦典/历法/起卦/断语/卦录/插件/走势/规范/Agent   （210 项）
+node tools/check.mjs           # 内核：卦典/历法/起卦/断语/卦录/插件/走势/规范/Agent   （243 项）
 node tools/check-hermes.mjs    # Hermes：四协议适配 + 路由 + 重试熔断（全离线）        （63 项）
-node tools/check-web.mjs       # 前端联调（连不上服务时自起示例服务）：逐条路由真跑一遍 （91 项）
+node tools/check-web.mjs       # 前端联调（连不上服务时自起示例服务）：逐条路由真跑一遍 （108 项）
 node tools/check-mcp.mjs       # MCP stdio 往返与 stdout 纯净性                      （14 项）
 node tools/check-desktop.mjs   # 桌面版：真起 Electron 窗口跑断言                     （51 项）
 node tools/check-docs.mjs      # 文档与代码一致性（项数、附录 B、ADR 编号）           （27 项）
-node tools/check-validate.mjs  # 校验器负向测试（改坏了必须报错）                     （6 项）
+node tools/check-validate.mjs  # 校验器负向测试（改坏了必须报错）                     （10 项）
 node tools/validate.mjs        # 按 schema 校验全部卦录与会话
 npm run check:all              # 七套一起跑
 ```
 
-七套合计 **462 项**，当前全过；各套各验什么、以及它们实际抓出过哪些缺陷，见 **[测试与质量保证](docs/09-测试与质量保证.md)**。
+七套合计 **516 项**，当前全过；各套各验什么、以及它们实际抓出过哪些缺陷，见 **[测试与质量保证](docs/09-测试与质量保证.md)**。
 
 ---
 
@@ -608,6 +608,8 @@ npm run check:all              # 七套一起跑
 |---|---|---|
 | GET | `/api/health` | 存活 |
 | GET | `/api/meta` | 起卦法、类别、地点、复盘状态、知识库状况、插件清单、配置 |
+| GET | `/api/update-check` | 问一次 GitHub 的最新发行版（本程序**唯一**的主动外呼；可在设置里关掉，关掉即不出网） |
+| POST | `/api/config` | 写顶层配置（白名单只有 `lastSeenVersion` 与 `updateCheck`） |
 | GET | `/api/records` | 卦录摘要列表（支持 `q` `category` `grade` `review`） |
 | POST | `/api/records` | 新增卦录 |
 | GET | `/api/records/:id` | 单条全文（含插件面板） |
@@ -636,6 +638,9 @@ npm run check:all              # 七套一起跑
 | POST | `/api/agent/ping` | 模型连通性自检 |
 | GET | `/api/agent/models` | 拉取可用模型列表 |
 | GET | `/api/agent/mcp` | MCP 接入信息（脚本路径、Codex/Claude 配置片段） |
+| GET | `/api/agent/balance` | 厂商余额（目前只有 DeepSeek 系提供接口） |
+| GET/POST/PATCH/DELETE | `/api/chats…` | AI 会话：列表／新建／详情／改名／追加轨迹／删除／附件（`/api/chats/:id/files`） |
+| GET | `/api/help` `/api/help/:id` | 随包文档清单与正文 |
 | GET | `/api/plugins` | 插件清单 |
 | POST | `/api/plugins/reload` | 热载 |
 | POST | `/api/plugins/:id/toggle` | 启停 |

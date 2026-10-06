@@ -56,6 +56,8 @@ export async function makeRuntime() {
     trend: await load('core/trend.mjs'),
     guaTiao: await load('core/guaTiao.mjs'),
     migrate: await load('core/migrate.mjs'),
+    lunar: await load('core/lunar.mjs'),
+    xiaoliuren: await load('core/xiaoliuren.mjs'),
   };
   const { Store } = await load('server/store.mjs');
   const { createToolkit } = await load('agent/tools.mjs');
@@ -96,9 +98,12 @@ export async function handleRpc(req, runtime) {
           capabilities: { tools: { listChanged: false }, resources: { listChanged: false } },
           serverInfo: SERVER_INFO,
           instructions:
-            '问心卦：梅花易数卦录台。用 tools/call 调 cast 起卦（卦象由本服务依正法算出，勿自行编造卦名爻辞）、'
-            + 'save_gua_tiao 批量录入、list_records／get_record 查旧卦、update_review 写复盘、trend 看走势、'
-            + 'hexagram_lookup 查卦典。先调 format_spec 了解「卦条」导入格式。',
+            '问心卦：梅花易数与道教小六壬两种占法的卦录台。用 tools/call 调 cast 起卦'
+            + '（梅花给卦名爻辞；小六壬传 method:xlrNumbers／xlrTime，出三宫与末宫断辞——'
+            + '卦象一律由本服务依正法算出，勿自行编造）、'
+            + 'save_gua_tiao 批量录入（只收梅花的「卦条」，小六壬请用 cast／save_record）、'
+            + 'list_records／get_record 查旧卦、update_review 写复盘、trend 看走势、'
+            + 'hexagram_lookup 查卦典。先调 format_spec 了解格式与两种占法的分别。',
         });
 
       case 'notifications/initialized':
@@ -163,7 +168,9 @@ export async function handleRpc(req, runtime) {
               mimeType: 'application/json',
               text: JSON.stringify(runtime.store.list().map((r) => ({
                 id: r.id, title: r.title, category: r.category, localTime: r.cast?.localTime,
-                ben: r.chart?.ben?.fullName, grade: r.reading?.grade?.label, review: r.review?.status,
+                method: r.cast?.method,
+                ben: r.chart?.ben?.fullName || r.chart?.chainText || '',
+                grade: r.reading?.grade?.label, review: r.review?.status,
               })), null, 2),
             }],
           });
@@ -198,10 +205,11 @@ export async function handleRpc(req, runtime) {
           prompts: [
             {
               name: 'divine',
-              description: '按梅花易数起一卦并给出有卦象气质的解读',
+              description: '起一卦并给出有卦象气质的解读（梅花易数；method=xlrNumbers／xlrTime 时改走小六壬三宫）',
               arguments: [
                 { name: 'question', description: '所问之事', required: true },
-                { name: 'number', description: '1–100 的报数', required: false },
+                { name: 'number', description: '梅花：1–100 的报数；小六壬：可给一至三数（空格分隔）', required: false },
+                { name: 'method', description: '起卦法：默认梅花一数＋时辰；小六壬报数给 xlrNumbers，月日时辰给 xlrTime', required: false },
                 { name: 'time', description: '起卦时间 YYYY-MM-DD HH:mm', required: false },
               ],
             },
@@ -217,16 +225,16 @@ export async function handleRpc(req, runtime) {
         const name = params?.name;
         const a = params?.arguments || {};
         if (name === 'divine') {
+          const isXlr = /^xlr/i.test(String(a.method || ''));
+          const text = isXlr
+            ? `请为我起一卦小六壬。\n所问：${a.question || '（未填）'}\n起课法：${a.method}（报数一至三数，或月日时辰）\n报数／月日：${a.number || '（未给，请先问我；月日时辰起课需说明农历还是公历）'}\n时间：${a.time || '（未给，用当前时间）'}\n`
+              + '请先调 cast 工具（method 传上述起课法）取得三宫与末宫断辞，再按【月宫／初宫】【日宫／次宫】【末宫】【断】【宜】【忌】【应期】原文引述；'
+              + '论课只用六宫、六神、三宫、末宫，不要用体用生克那一套。'
+            : `请为我起一卦。\n所问：${a.question || '（未填）'}\n报数：${a.number || '（未给，请先问我）'}\n时间：${a.time || '（未给，用当前时间）'}\n`
+              + '请先调 cast 工具取得卦象与断语，再按【主】【互】【变】【断】【宜】【忌】【应期】原文引述，最后用白话告诉我该做什么。';
           return ok({
             description: '起卦',
-            messages: [{
-              role: 'user',
-              content: {
-                type: 'text',
-                text: `请为我起一卦。\n所问：${a.question || '（未填）'}\n报数：${a.number || '（未给，请先问我）'}\n时间：${a.time || '（未给，用当前时间）'}\n`
-                  + '请先调 cast 工具取得卦象与断语，再按【主】【互】【变】【断】【宜】【忌】【应期】原文引述，最后用白话告诉我该做什么。',
-              },
-            }],
+            messages: [{ role: 'user', content: { type: 'text', text } }],
           });
         }
         if (name === 'review_due') {

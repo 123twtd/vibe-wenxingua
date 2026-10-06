@@ -11,6 +11,7 @@
  */
 
 import { TRIGRAMS } from './bagua.mjs';
+import { isXlrChart } from './xiaoliuren.mjs';
 
 /** 量程说明：吉凶诸线共用量程 −100~100；五行占比为 0~100 */
 export const SCALE = { signed: [-100, 100], percent: [0, 100] };
@@ -143,6 +144,13 @@ export function buildTrend(records, opts = {}) {
   const categories = Array.isArray(opts.categories) && opts.categories.length ? opts.categories : null;
 
   /**
+   * 小六壬记录不进本图：走势诸线（体用生克、互变、旺衰）是梅花的语义，
+   * 小六壬的吉凶取自六宫断辞，两者不同源；混在一起画会造出假的连续线。
+   * 但它们**不会被丢掉**——条数记在 skippedXlr，页面上有一句说明。
+   */
+  const xlrSkipped = records.filter((r) => isXlrChart(r.chart)).length;
+
+  /**
    * 每条卦录落在横轴上的位置由 `axis` 决定。
    * 按「应验时间」看时，长期之事会排到右侧的未来区间去——
    * 这正是原先只看起卦时间做不到的事：所有卦都挤在起卦那一天。
@@ -172,12 +180,20 @@ export function buildTrend(records, opts = {}) {
   const points = recs.length;
 
   if (!points) {
-    return { mode, xMode, smooth, points: 0, xLabels: [], series: [], records: [], notes: ['尚无卦录，先在「起卦台」起一卦，或在「导入」里录旧卦。'] };
+    return {
+      mode, xMode, smooth, points: 0, xLabels: [], series: [], records: [], skippedXlr: xlrSkipped,
+      notes: [xlrSkipped
+        ? `库中只有 ${xlrSkipped} 条小六壬卦录：它的吉凶取自六宫断辞，与梅花易数的体用生克不同源，故不并入本图。`
+        : '尚无卦录，先在「起卦台」起一卦，或在「导入」里录旧卦。'],
+    };
   }
 
   // 2) 按模式选系列
   let series = [];
   const notes = [];
+  if (xlrSkipped) {
+    notes.push(`另有 ${xlrSkipped} 条小六壬卦录未并入本图：小六壬的吉凶取自六宫断辞，与梅花易数的体用生克不同源。`);
+  }
   /** 同领域内每卦相对基准的偏离（只有 domain 模式会填） */
   const deviations = [];
 
@@ -374,6 +390,8 @@ export function buildTrend(records, opts = {}) {
     deviations,
     /** 按应验时间看时，有多少条缺应期、退回按起卦时间排 */
     dueFallback: usedFallback,
+    /** 有多少条小六壬卦录被排除在本图之外（原因见 notes） */
+    skippedXlr: xlrSkipped,
     categories: [...new Set(records.map((r) => r.category).filter(Boolean))],
     domains: DOMAINS.map(({ id, name, color, scale, mode: m, desc }) => ({ id, name, color, scale, mode: m, desc })),
     records: recs.map((r) => ({

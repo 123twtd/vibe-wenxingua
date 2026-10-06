@@ -9,6 +9,8 @@
  * 动爻之辞定应。同一卦局重算，其文必同（按卦局指纹取变体，保证可复现）。
  */
 
+import { interpretXlr } from './xiaoliuren.mjs';
+
 /* ============================================================
  * 一、词汇与模板
  * ========================================================== */
@@ -258,6 +260,9 @@ function dedupe(arr) {
  * @param {object} chart core/divination.mjs 的 cast() / buildChart() 结果
  */
 export function interpret(chart) {
+  // 小六壬是同录一库的另一种占法：断课在 core/xiaoliuren.mjs，
+  // 在此分派是为了让所有调用点（记录、接口、助手）都只认这一个入口。
+  if (chart?.kind === 'xlr') return interpretXlr(chart);
   const { ben, hu, bian, moving, tiyong, calendar, score, inputs } = chart;
   const category = normalizeCategory(inputs?.category);
   const rel = tiyong.relation.key;

@@ -55,6 +55,8 @@ const core = {
   schema: await import(pathToFileURL(path.join(ROOT, 'core', 'schema.mjs')).href),
   guaTiao: await import(pathToFileURL(path.join(ROOT, 'core', 'guaTiao.mjs')).href),
   migrate: await import(pathToFileURL(path.join(ROOT, 'core', 'migrate.mjs')).href),
+  lunar: await import(pathToFileURL(path.join(ROOT, 'core', 'lunar.mjs')).href),
+  xiaoliuren: await import(pathToFileURL(path.join(ROOT, 'core', 'xiaoliuren.mjs')).href),
 };
 
 const agent = {
@@ -251,6 +253,7 @@ function newRecordFromBody(body) {
       placeName: body.placeName || body.cast?.placeName,
       useTrueSolarTime: body.useTrueSolarTime ?? body.cast?.useTrueSolarTime,
       movingFrom: body.movingFrom || body.cast?.movingFrom,
+      calendarType: body.calendarType || body.cast?.calendarType,
       question: body.question,
       category: body.category,
     },
@@ -321,15 +324,100 @@ route('GET', '/api/meta', (req, res) => {
   });
 });
 
+/* ---------- 版本更新检测（程序**唯一**的主动外呼） ----------
+ * 为什么要有：装完之后没人会天天去发行页翻有没有新版。这里在启动后问一次
+ * GitHub 的「最新发行版」接口，有新版本就由界面在顶部挂一条提示。
+ * 三条纪律（与 docs/11-安全与隐私设计 一致）：
+ *   1. 固定域名 https://api.github.com，只发一个 GET，不带任何本机数据、不带密钥；
+ *   2. 4 秒超时 + 响应上限 256KB，失败**静默**（照样返回 ok:true，绝不 500）；
+ *   3. 成功结果在内存里缓存 6 小时；设置里可一键关闭（config.updateCheck）。
+ */
+const UPDATE_REPO = '123twtd/vibe-wenxingua';
+const UPDATE_LATEST_API = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;
+const UPDATE_TIMEOUT_MS = 4000;
+const UPDATE_MAX_BYTES = 256 * 1024;
+const UPDATE_TTL_MS = 6 * 60 * 60 * 1000;
+let updateCache = { at: 0, data: null };
+
+async function fetchLatestRelease() {
+  if (updateCache.data && Date.now() - updateCache.at < UPDATE_TTL_MS) return updateCache.data;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), UPDATE_TIMEOUT_MS);
+  try {
+    const res = await fetch(UPDATE_LATEST_API, {
+      signal: ctrl.signal,
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': `wenxingua/${APP_VERSION}` },
+    });
+    if (!res.ok) throw new Error(`GitHub 返回 HTTP ${res.status}`);
+    const text = await res.text();
+    if (text.length > UPDATE_MAX_BYTES) throw new Error('响应体过大，已忽略');
+    const rel = JSON.parse(text);
+    const data = {
+      // tag 形如 v1.2.0：去掉前缀 v，让界面直接显示数字
+      latest: String(rel.tag_name || rel.name || '').replace(/^v/i, ''),
+      url: String(rel.html_url || `https://github.com/${UPDATE_REPO}/releases`),
+      name: String(rel.name || ''),
+      publishedAt: String(rel.published_at || ''),
+    };
+    updateCache = { at: Date.now(), data };
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+route('GET', '/api/update-check', async (req, res) => {
+  if (store.getConfig().updateCheck === false) {
+    return json(res, { ok: true, enabled: false, current: APP_VERSION, latest: '' });
+  }
+  try {
+    const data = await fetchLatestRelease();
+    return json(res, { ok: true, enabled: true, current: APP_VERSION, ...data });
+  } catch (err) {
+    // 断网、被墙、限流都走这里：检测新版本失败**不该打扰使用**——
+    // 界面见到 latest 为空就什么都不显示，错误只在需要排障时看得见。
+    return json(res, { ok: true, enabled: true, current: APP_VERSION, latest: '', error: err.message });
+  }
+});
+
+/* 顶层配置的写入口。
+ * 为什么只放这两个键：config.json 里还有数据位置、插件注册这类「改了要出事」的项，
+ * 从界面来的请求体不该碰得到它们——白名单之外一律忽略，一个都不认就 400。 */
+route('POST', '/api/config', async (req, res) => {
+  try {
+    const body = await readBody(req);
+    const patch = {};
+    if (body.lastSeenVersion !== undefined) {
+      const v = String(body.lastSeenVersion || '').trim();
+      if (v.length > 32) return fail(res, new Error('lastSeenVersion 超过 32 字符'));
+      patch.lastSeenVersion = v;
+    }
+    if (body.updateCheck !== undefined) patch.updateCheck = body.updateCheck !== false;
+    if (!Object.keys(patch).length) {
+      return fail(res, new Error('没有可写的配置项：顶层只接受 lastSeenVersion 与 updateCheck'));
+    }
+    const next = store.setConfig(patch);
+    return json(res, { ok: true, config: { lastSeenVersion: next.lastSeenVersion, updateCheck: next.updateCheck } });
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
 route('GET', '/api/records', (req, res, url) => {
   const q = (url.searchParams.get('q') || '').toLowerCase();
   const category = url.searchParams.get('category') || '';
   const grade = url.searchParams.get('grade') || '';
   const review = url.searchParams.get('review') || '';
+  const method = url.searchParams.get('method') || '';
+  // school 是「占法」的便捷值（meihua｜xlr）；method 则精确到某一起课法
+  const school = url.searchParams.get('school') || '';
   let items = store.list();
   if (category) items = items.filter((r) => r.category === category);
   if (grade) items = items.filter((r) => r.reading?.grade?.label === grade);
   if (review) items = items.filter((r) => r.review?.status === review);
+  if (method) items = items.filter((r) => r.cast?.method === method);
+  if (school === 'xlr') items = items.filter((r) => core.xiaoliuren.isXlrChart(r.chart));
+  if (school === 'meihua') items = items.filter((r) => !core.xiaoliuren.isXlrChart(r.chart));
   if (q) {
     items = items.filter((r) => JSON.stringify({
       t: r.title, q: r.question, n: r.narrative, c: r.chart, g: r.reading,
@@ -407,11 +495,17 @@ route('GET', '/api/records/:id/export', (req, res, url, params) => {
   const format = url.searchParams.get('format') || 'md';
   const pluginExporter = plugins.exporters.find((e) => e.id === format);
   if (pluginExporter) {
-    const out = pluginExporter.render(rec, { core });
-    return send(res, 200, out, {
-      'Content-Type': pluginExporter.mime,
-      'Content-Disposition': attachment(`${rec.id}.${pluginExporter.ext}`, `${rec.id}.${pluginExporter.ext}`),
-    });
+    try {
+      const out = pluginExporter.render(rec, { core });
+      return send(res, 200, out, {
+        'Content-Type': pluginExporter.mime,
+        'Content-Disposition': attachment(`${rec.id}.${pluginExporter.ext}`, `${rec.id}.${pluginExporter.ext}`),
+      });
+    } catch (err) {
+      // 插件导出器多按梅花的卦形写（如直接取 c.ben）；遇小六壬记录会抛。
+      // 不许因此把导出打成 500——退回核心导出，日志留一句，插件作者可自行修正。
+      console.warn(`[plugins] 导出器「${pluginExporter.id}」处理 ${rec.id} 失败，已退回核心 Markdown：${err.message}`);
+    }
   }
   if (format === 'json') {
     return send(res, 200, JSON.stringify(rec, null, 2), {
@@ -539,6 +633,7 @@ route('POST', '/api/cast', async (req, res) => {
       movingFrom: body.movingFrom,
       hexagram: body.hexagram,
       movingPosition: body.movingPosition,
+      calendarType: body.calendarType,
       question: body.question,
       category: body.category,
     });
@@ -575,6 +670,15 @@ route('POST', '/api/import/commit', async (req, res) => {
       try {
         const b = item.block || item;
         const ov = item.overrides || {};
+        // 解析器认出的「不支持」（小六壬）是**硬拦**：没有哪一项 override 能把它变成梅花卦，
+        // 若放行就会被当成「一数＋时辰」猜出一个假卦——那是「不许猜」明令禁止的。
+        if (b.unsupported) {
+          failed.push({
+            item: b.unsupported === 'xlr' ? '小六壬' : b.unsupported,
+            error: '卦条 v1 只描述梅花易数；小六壬请到「起卦台」起课（本页不会把它当梅花卦认）。',
+          });
+          continue;
+        }
         const localTime = ov.localTime || b.fields?.localTime;
         const useHex = (ov.hexagram || b.claimed?.ben) && (ov.movingPosition || b.claimed?.moving);
         const base = {

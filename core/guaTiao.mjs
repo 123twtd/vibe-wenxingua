@@ -28,6 +28,8 @@
  * ────────────────────────────────────────────────────────
  */
 
+import { isXlrChart, XLR_LABELS } from './xiaoliuren.mjs';
+
 export const GUATIAO_VERSION = 1;
 export const HEADER = '# 卦条 v1';
 
@@ -257,6 +259,50 @@ export function parseGuaTiao(text) {
   /* ---- 归一 ---- */
   const localTime = values.localTime ? normalizeTime(values.localTime) : '';
   const methodRaw = values.method ? values.method.replace(/\s/g, '') : '';
+
+  // 卦条 v1 只描述梅花易数。小六壬没有本卦与动爻，若硬按信息推断，会被记成另一卦——
+  // 那是「猜」，不是识别。所以认出「法」里的小六壬字样就明确报不支持，请用户到起卦台。
+  if (/小六壬|六壬|xlr|报数起课|月日时辰起课|三数起课/i.test(methodRaw)) {
+    return {
+      ok: false,
+      source: 'gua-tiao',
+      version: GUATIAO_VERSION,
+      confidence: 0,
+      strategy: 'unsupported',
+      unsupported: 'xlr',
+      fields: {
+        localTime,
+        placeName: values.placeName || '',
+        longitude: values.longitude !== undefined && values.longitude !== '' ? Number(values.longitude) : null,
+        latitude: values.latitude !== undefined && values.latitude !== '' ? Number(values.latitude) : null,
+        useTrueSolarTime: values.useTrueSolarTime !== undefined ? (parseBool(values.useTrueSolarTime) ?? true) : true,
+        numbers: [],
+        question: values.question || '',
+        category: values.category || '',
+        notes: [],
+        method: 'xlr',
+      },
+      claimed: {},
+      signature: values.signature || '',
+      tags: [],
+      review: { status: values.status || '待应验', result: values.result || '' },
+      title: values.title || '',
+      hexagramText: '',
+      movingText: '',
+      tiyongText: '',
+      detected: { times: [], numbers: [], hexagrams: [], places: [] },
+      warnings: ['卦条 v1 只描述梅花易数；小六壬三宫之课请到「起卦台」起课，或让助手用 cast／save_record 录入。'],
+      unknownKeys: [],
+      hints: [],
+      missing: ['小六壬起课（卦条 v1 不支持）'],
+      narrative: blockValues.narrative || values.narrative || '',
+      background: blockValues.background || values.background || '',
+      plan: blockValues.plan || values.plan || '',
+      collation: blockValues.collation || values.collation || '',
+      qa: blockValues.qa || values.qa || '',
+    };
+  }
+
   let method = METHOD_NAMES[methodRaw] || methodRaw || '';
 
   const numbers = values.numbers
@@ -378,6 +424,38 @@ export function parseGuaTiaoMany(text) {
   return splitGuaTiao(text).map(parseGuaTiao).filter((b) => b.fields.localTime || b.claimed.ben || b.missing.length === 0 || b.narrative);
 }
 
+/** 追加一个 `键: |` 多行块 */
+function pushBlock(out, label, text) {
+  if (!text) return;
+  out.push(`${label}: |`);
+  for (const line of String(text).split('\n')) out.push(`  ${line}`);
+}
+
+/**
+ * 小六壬卦录 → 只导出文字存录，不导出时／数／卦象字段。
+ * 卦条 v1 描述不了三宫之课；这样写出的文件再导入会明确报「不支持」，而不是被猜成梅花。
+ */
+function xlrToNotice(rec, withNarrative) {
+  const L = [];
+  L.push(HEADER);
+  L.push('# 此条为小六壬卦录：卦条 v1 只描述梅花易数，故不导出时／法／数／本卦／动。');
+  L.push('# 再导入不会被认成梅花卦；本文件作文字存档之用。');
+  if (rec.title) L.push(`题: ${rec.title}`);
+  if (rec.question) L.push(`问: ${rec.question}`);
+  L.push(`类: ${rec.category || '其他'}`);
+  L.push(`法: ${XLR_LABELS[rec.cast?.method] || '小六壬'}`);
+  if (rec.reading?.signature) L.push(`签: ${rec.reading.signature}`);
+  if (rec.tags?.length) L.push(`标签: ${rec.tags.join(' ')}`);
+  if (rec.review?.status) L.push(`复盘: ${rec.review.status}`);
+  if (rec.review?.result) L.push(`实况: ${rec.review.result.replace(/\n/g, ' ')}`);
+  pushBlock(L, '背景', rec.background);
+  pushBlock(L, '问答', rec.qa);
+  if (withNarrative) pushBlock(L, '原文', rec.narrative);
+  pushBlock(L, '方案', rec.plan);
+  pushBlock(L, '校勘', rec.collation);
+  return L.join('\n');
+}
+
 /**
  * 由卦录生成卦条（导出 → 手改 → 再导入，可往返）。
  * @param {object} rec 卦录
@@ -385,14 +463,10 @@ export function parseGuaTiaoMany(text) {
  */
 export function toGuaTiao(rec, opts = {}) {
   const withNarrative = opts.withNarrative !== false;
+  if (isXlrChart(rec.chart)) return xlrToNotice(rec, withNarrative);
   const c = rec.cast || {};
   const L = [];
-  /** 起一个 `键: |` 多行块 */
-  const block = (out, label, text) => {
-    if (!text) return;
-    out.push(`${label}: |`);
-    for (const line of String(text).split('\n')) out.push(`  ${line}`);
-  };
+  const block = (out, label, text) => pushBlock(out, label, text);
   L.push(HEADER);
   if (rec.title) L.push(`题: ${rec.title}`);
   if (rec.question) L.push(`问: ${rec.question}`);

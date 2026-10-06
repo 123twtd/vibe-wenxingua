@@ -1,12 +1,12 @@
-# 问心卦 · 接口控制文档（ICD）
+﻿# 问心卦 · 接口控制文档（ICD）
 | 项 | 内容 |
 |---|---|
 | 文档编号 | 04 |
 | 标题 | 问心卦 · 接口控制文档（ICD） |
 | 版本 | 1.0 |
 | 状态 | 已发布 |
-| 适用产品版本 | v1.1.0 |
-| 最后更新 | 2026-10-03 |
+| 适用产品版本 | v1.3.0 |
+| 最后更新 | 2026-10-07 |
 | 读者 | 接口责任人、插件作者、外部 agent 集成者、变更评审人、维护者 |
 | 关联文档 | [00-文档索引.md](00-文档索引.md)、[01-系统设计说明书.md](01-系统设计说明书.md)、[02-架构与框图.md](02-架构与框图.md)、[03-接口文档.md](03-接口文档.md)、[05-Agent设计文档.md](05-Agent设计文档.md)、[06-Hermes网关与路由设计.md](06-Hermes网关与路由设计.md)、[07-数据模型与存储设计.md](07-数据模型与存储设计.md)、[11-安全与隐私设计.md](11-安全与隐私设计.md)、[12-插件与扩展开发指南.md](12-插件与扩展开发指南.md)、[规范.md](规范.md) |
 本文是**控制性文档**：管的是「接口的契约怎么定、谁能改、改了要同步什么、破坏契约的后果」。字段级细节见 [03-接口文档.md](03-接口文档.md)。规范强度用 RFC2119 中文：**必须**／**应当**／**可以**／**不得**。
@@ -76,7 +76,7 @@
 
 ## 三、接口总表
 
-### 3.1 REST（38）
+### 3.1 REST（50）
 「超时」为「无内置」表示服务端不设超时，由消费方自行决定；服务端唯一主动设限的是 `readBody` 的 32 MiB 上限。
 
 | ID | 名称 | 提供方 | 消费方 | 方向 | 协议 | 触发条件 | 幂等 | 超时 | 版本 |
@@ -119,6 +119,18 @@
 | IF-REST-036 | 恢复备份 `POST /api/restore` | 本地服务 | 界面、脚本 | ← | HTTP/1.1 | 用户点「恢复备份」 | 是 | 无内置 | v1.1.0 |
 | IF-REST-037 | 停止服务 `POST /api/shutdown` | 本地服务 | 界面、脚本 | ← | HTTP/1.1 | 用户点停止 | 否 | 200 ms 后退出 | v1.1.0 |
 | IF-REST-038 | 厂商余额 `GET /api/agent/balance` | 本地服务 🡒 厂商余额接口 | 界面 | ← | HTTP/1.1 | 打开助手面板／点击余额 chip／每 5 分钟自动刷新 | 是 | 上游 8 s | v1.1.0 |
+| IF-REST-039 | 会话列表 `GET /api/chats` | 本地服务 | 界面 | ← | HTTP/1.1 | 打开助手面板／一轮结束后刷下拉 | 是 | 无内置 | v1.1.0 |
+| IF-REST-040 | 新建会话 `POST /api/chats` | 本地服务 | 界面 | ← | HTTP/1.1 | 用户点面板头上的「＋」 | 否 | 无内置 | v1.1.0 |
+| IF-REST-041 | 会话详情 `GET /api/chats/:id` | 本地服务 | 界面 | ← | HTTP/1.1 | 切换会话 | 是 | 无内置 | v1.1.0 |
+| IF-REST-042 | 改会话标题 `PATCH /api/chats/:id` | 本地服务 | 界面 | ← | HTTP/1.1 | 用户点「✎」 | 是 | 无内置 | v1.1.0 |
+| IF-REST-043 | 追加一轮 `POST /api/chats/:id/append` | 本地服务 | 界面 | ← | HTTP/1.1 | 一轮跑完／用户点了「确认执行」 | 否 | 无内置 | v1.1.0 |
+| IF-REST-044 | 删会话 `DELETE /api/chats/:id` | 本地服务 | 界面 | ← | HTTP/1.1 | 用户点「✕」（默认软删） | 否 | 无内置 | v1.1.0 |
+| IF-REST-045 | 上传会话附件 `POST /api/chats/:id/files` | 本地服务 | 界面 | ← | HTTP/1.1 | 用户点「📎」选文件 | 否 | 无内置 | v1.1.0 |
+| IF-REST-046 | 取回会话附件 `GET /api/chats/:id/files/:name` | 本地服务 | 界面 | ← | HTTP/1.1 | 发送时内联文本类附件 | 是 | 无内置 | v1.1.0 |
+| IF-REST-047 | 随包文档清单 `GET /api/help` | 本地服务 | 界面 | ← | HTTP/1.1 | 打开「文档」页 | 是 | 无内置 | v1.1.0 |
+| IF-REST-048 | 读随包文档 `GET /api/help/:id` | 本地服务 | 界面、桌面主进程 | ← | HTTP/1.1 | 点开某一篇（桌面菜单「帮助」也走它） | 是 | 无内置 | v1.1.0 |
+| IF-REST-049 | 更新检测 `GET /api/update-check` | 本地服务 🡒 GitHub 发行版接口 | 界面 | ← | HTTP/1.1 | 界面启动后约 1.5 秒（设置里可关） | 是 | 上游 **4 s** | v1.3.0 |
+| IF-REST-050 | 写顶层配置 `POST /api/config` | 本地服务 | 界面 | ← | HTTP/1.1 | 关闭更新说明卡／切换更新检测 | 是 | 无内置 | v1.3.0 |
 
 ### 3.2 插件机制（5）
 | ID | 名称 | 提供方 | 消费方 | 方向 | 协议 | 触发条件 | 幂等 | 超时 | 版本 |
@@ -201,7 +213,7 @@
 ### 4.2 卦录增删改查
 | 条目 | 内容 |
 |---|---|
-| **IF-REST-003 卦录列表** | 双方：本地服务 → 界面/脚本。数据格式：查询参数 `q`/`category`/`grade`/`review`；响应 `{ok,total,items[]}`，`items[]` 元素为 `summarize()` 的十四个键。正常流：`store.list()`（已按 `cast.localTime` 倒序）→ 三路精确筛选 → 关键词全字段匹配 → 逐条 `summarize()`。异常流：无参数错误路径；无结果时 `total:0`、`items:[]`。时序：`store.maybeRescan()` 在**本请求受理时**执行，故外部工具刚写入的文件在下一次请求即可见。重试：可自由重试。幂等：纯读，幂等。兼容性：`items[].origins`（值取 `origin.kind`）**不得**改名，历史消费方已依赖。 |
+| **IF-REST-003 卦录列表** | 双方：本地服务 → 界面/脚本。数据格式：查询参数 `q`/`category`/`grade`/`review`/`method`/`school`；响应 `{ok,total,items[]}`，`items[]` 元素为 `summarize()` 的十四个键。正常流：`store.list()`（已按 `cast.localTime` 倒序）→ 五路精确筛选（`category`/`grade`/`review`/`method` 精确比 `cast.method`；`school` 取 `meihua`/`xlr`，按 `chart.kind` 分梅花的正反）→ 关键词全字段匹配 → 逐条 `summarize()`。异常流：无参数错误路径；无结果时 `total:0`、`items:[]`。时序：`store.maybeRescan()` 在**本请求受理时**执行，故外部工具刚写入的文件在下一次请求即可见。重试：可自由重试。幂等：纯读，幂等。兼容性：`items[].origins`（值取 `origin.kind`）**不得**改名，历史消费方已依赖。 |
 | **IF-REST-004 新增卦录** | 双方：界面/脚本 → 本地服务。前置条件：`localTime` 可被 `calendarInfo` 解析；`manual` 时 `hexagram` 可在卦典中解析且 `movingPosition` 在 1–6。正常流：`readBody` → `newRecordFromBody`（分流 `cast`/`hexagram`）→ `buildRecord`/`buildFromHexagram` → `interpret` → `audit` → `store.save` → 触发事件。异常流：引擎抛错 → `400 {ok:false,error}`；文件系统失败 → `400`；**不得**产生半写文件（`save()` 先写 `.tmp` 再 `rename`）。时序：**必须**先于任何引用该 id 的读写；id 由 `makeId()` 依 `localTime` 生成，同分钟序号由 `store.ids()` 与进程内 `seqCache` 共同保证唯一。重试：**不得**自动重试——会生成新 id 并产生重复卦录；消费方若需「只录一次」，**应当**在失败后先 `IF-REST-003` 确认。幂等：非幂等。返回码：`200`、`400`。兼容性：`record` 字段集受 `schema/record.schema.json` 约束；新增字段**必须**同步升 `schema` 号。 |
 | **IF-REST-005 卦录详情** | 前置条件：id 存在。数据格式：响应 `{ok,record,panels[]}`。正常流：取记录 → 逐个插件面板 `render`。异常流：id 不存在 → `404 未找到该卦录`；单个面板渲染抛错被**就地捕获**并降级为含错误文案的 `html`，不影响整体 `200`。时序：面板渲染同步执行，慢插件会拉长响应时间，插件作者**应当**避免阻塞 IO。幂等：幂等（面板若自身有副作用则属插件责任）。兼容性：`panels[]` 元素允许携带插件自定义键（宿主会把渲染结果展开到顶层）。 |
 | **IF-REST-006 改卦录** | 前置条件：id 存在。数据格式：白名单 8 键；响应 `{ok,record}`。正常流：读原记录 → 覆盖白名单字段 → `updatedAt` 置当前 → `normalizeRecord` → `store.save` → 触发事件。异常流：`404`；非白名单键被**静默忽略**（不报错，这是既有契约）。时序：`updatedAt` **必须**晚于或等于 `createdAt`。重试：幂等，可重试，但每次重试都会刷新 `updatedAt`。幂等：数据结果幂等，时间戳不幂等。兼容性：白名单**只可以**扩充，**不得**收窄；已发布的 8 个键永久有效。 |
@@ -277,7 +289,7 @@
 | **IF-MCP-001 `initialize`** | 双方：MCP 服务 ↔ 外部 agent 宿主。前置条件：进程已启动且 `makeRuntime()` 完成（载入全部内核、`Store`、`toolkit`）。正常流：收到请求 → 返回固定结构 `{protocolVersion,capabilities,serverInfo,instructions}`。异常流：无。时序：**应当**是会话第一条消息；服务端不强制。幂等：幂等。兼容性：`protocolVersion` 固定为 `2024-11-05`；`capabilities` 中 `listChanged` 均为 `false`（服务**不**在运行中推送列表变更）。 |
 | **IF-MCP-002 `notifications/initialized`** | 数据格式：无 `id` 的 JSON-RPC 消息。正常流：返回 `null`，**不写任何响应**。幂等：幂等。兼容性：别名 `initialized` 同样被接受，二者**必须**保持等价。 |
 | **IF-MCP-003 `ping`** | 正常流：返回 `result: {}`。幂等：幂等。兼容性：返回空对象是既有契约。 |
-| **IF-MCP-004 `tools/list`** | 数据格式：`{tools:[{name,description,inputSchema}]}`，恒 12 项。异常流：无。幂等：幂等。兼容性：`description` 为 `【<title>】<description>` 的拼接形态，与 `GET /api/agent/tools` 的分离形态**不同**，两者都要保留；`inputSchema` 与 `agent/tools.mjs` 的 `parameters` **必须**逐字一致。 |
+| **IF-MCP-004 `tools/list`** | 数据格式：`{tools:[{name,description,inputSchema}]}`，恒 21 项。异常流：无。幂等：幂等。兼容性：`description` 为 `【<title>】<description>` 的拼接形态，与 `GET /api/agent/tools` 的分离形态**不同**，两者都要保留；`inputSchema` 与 `agent/tools.mjs` 的 `parameters` **必须**逐字一致。 |
 | **IF-MCP-005 `tools/call`** | 前置条件：`params.name` 非空。数据格式：`{name,arguments}`；响应 `{content:[{type:'text',text}],isError,_meta}`。正常流：`toolkit.call` → 成功则 `JSON.stringify(result, null, 2)` 作为文本。异常流：缺 `name` → JSON-RPC `-32602`；工具失败 → **JSON-RPC 层成功**，`isError: true`，文本为 `工具执行失败：<error>`。重试：**不得**自动重试写盘类工具；只读工具可重试。幂等：由被调工具决定。兼容性：错误承载方式（`isError` 而非 JSON-RPC error）冻结——**不得**改为抛 JSON-RPC 错误，否则宿主会误判为协议故障。 |
 | **IF-MCP-006 `resources/list`** | 数据格式：恒 3 个资源；`wenxingua://records` 的 `description` 含动态条数。幂等：幂等（`description` 随数据变化）。兼容性：三个 URI **不得**删除；新增资源**可以**。 |
 | **IF-MCP-007 `resources/read`** | 前置条件：URI 在四类可读形态之中。数据格式：`{uri}`；响应 `{contents:[{uri,mimeType,text}]}`。异常流：未知 URI → `-32602 未知资源 <uri>`；`wenxingua://record/<id>` 不存在 → `-32602 未找到卦录 <id>`。幂等：幂等（`spec/gua-tiao` 含当前时间戳）。兼容性：`wenxingua://record/<id>` 是**模板 URI**，不出现在 `resources/list`——这一不对称冻结。 |
@@ -285,6 +297,13 @@
 
 ### 4.14 MCP 全局时序与约束
 - 服务启动时**必须**先向 stderr 写就绪行（含工具数与卦录数），**不得**写 stdout；stdout **只允许**出现 JSON-RPC 消息，每条一行，`JSON.stringify` 无缩进；stdin 关闭即退出（`readline` 迭代结束）；请求体为数组时**并发**处理并在全部完成后逐条写出响应；因此数组内的写操作顺序**不保证**；`JSON.parse` 失败 → `{jsonrpc:'2.0',id:null,error:{code:-32700,message:'JSON 解析失败'}}`，随后继续读下一行；数据目录固定为 `<代码根>/data`，**不读** `QXG_DATA_DIR`——与 HTTP 服务可能指向不同目录，属已知设计取舍
+
+### 4.15 会话、文档与版本更新
+| 条目 | 内容 |
+|---|---|
+| **IF-REST-039…046 会话存储** | 前置条件：`data/chats/` 可写（写类接口）。数据格式：一段会话双存**模型侧 `messages`** 与**展示用 `trace`**；`append` 的请求体原样交给 `ChatStore.append`，服务端**只存不推断**。正常流：见 [03-接口文档.md](03-接口文档.md) L 节。异常流：`404`（`未找到该会话`／`未找到该附件`）；`040` 的 id 由服务端按当前时间生成，客户端**不得**自带 id。时序：`043` **必须**在一轮真正结束（或用户确认执行）之后调用——一轮进行中的中间态不进存档。重试：`039`／`041`／`046` 可自由重试；`040`／`043`／`045` **不得**自动重试（会多出一段会话／重复计一轮／重复占附件名）。幂等：读类幂等；`042` 幂等；`044` 默认软删（进 `data/trash/`），`?hard=1` 才真删。兼容性：`messages` 的成对约定（`assistant.tool_calls` 与 `tool` 结果必须成对）是**历史能否回推的判据**，**不得**在写入路径上打散或截断。 |
+| **IF-REST-047/048 随包文档** | 前置条件：条目在 `HELP_DOCS` 白名单里。数据格式：`047` 回目录（含 `exists`／`bytes`），`048` 回 `{markdown}` 原文。异常流：不在白名单 → `404`；该条是跳转条目（`link`）→ `400`；解析出的路径越出代码根目录 → `400 路径越界`（白名单被改坏时的双保险）。幂等：幂等（`bytes` 随文件变化）。兼容性：白名单是唯一真源，**不得**改成按请求路径拼文件。 |
+| **IF-REST-049/050 更新检测与顶层配置** | 前置条件：`049` 仅在 `config.updateCheck !== false` 时才出网。数据格式：`049` 回 `{enabled,current,latest,url,name,publishedAt}`，失败时 `latest:''` ＋ `error`；`050` 只认 `lastSeenVersion`（≤32 字符）与 `updateCheck`（布尔）。正常流：`049` = 固定域名 GET → 取 `tag_name` 去掉前缀 `v` → 成功结果缓存 6 小时；`050` = 白名单过滤 → `store.setConfig` → 只回这两项。异常流：**出网失败一律静默**（HTTP `200` ＋ `ok:true`，不重试、不 500、不打扰用户）；`050` 一个键都不认 → `400`，`config.json` 一字不动。时序：`049` 在界面启动后约 1.5 秒发一次，**不得**阻塞启动；版本比较在界面侧（`hasNewerVersion`），服务端只回事实。重试：`049` 可自由重试（有缓存兜着）；`050` 幂等可重试。兼容性：**这是本程序唯一的主动外呼**（见 [11-安全与隐私设计.md](11-安全与隐私设计.md) §6.3.3），固定域名与「关掉即不出网」的语义冻结；顶层白名单**不得**为了省事扩成整份覆盖。 |
 
 ---
 
@@ -294,7 +313,7 @@
 ### 5.1 卦录根级 `data/records/<id>.json`
 | 字段路径 | 类型 | 必填 | 取值范围/枚举 | 默认 | 语义 | 出现在哪些接口 |
 |---|---|---|---|---|---|---|
-| `schema` | int | **是** | ≥1 | — | 结构版本号，当前 `3` | REST-004/005/006/008/009、MCP-007 |
+| `schema` | int | **是** | ≥1 | — | 结构版本号，当前 `4` | REST-004/005/006/008/009、MCP-007 |
 | `id` | string | **是** | `^[0-9]{12}-[0-9]{2}$` | — | 编号 `YYYYMMDDHHmm`＋两位序号；一经生成不再更改 | 同上 |
 | `title` | string | **是** | ≤200 字 | 由 `question` 截 24 字，或 `<本卦>之占`，或 `未题之占` | 标题 | 同上 |
 | `category` | string | **是** | 8 类枚举 | `其他` | 类别，决定宜/忌取向 | 同上 |
@@ -316,10 +335,11 @@
 ### 5.2 起卦输入 `cast`
 | 字段路径 | 类型 | 必填 | 取值范围/枚举 | 默认 | 语义 | 出现在哪些接口 |
 |---|---|---|---|---|---|---|
-| `cast.method` | string | **是** | `numberAndTime`/`twoNumbers`/`timeOnly`/`manual` | `numberAndTime` | 起卦法 | REST-004/005/011/013、MCP-005 |
+| `cast.method` | string | **是** | `numberAndTime`/`twoNumbers`/`timeOnly`/`manual`/`xlrNumbers`/`xlrTime`（六法：前四梅花、后二小六壬） | `numberAndTime` | 起卦法 | REST-004/005/011/013、MCP-005 |
 | `cast.localTime` | string | **是** | `^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$` | — | 钟表时间 | 同上 |
 | `cast.numbers` | int[] | 视起卦法 | 每项 ≥1 | `[]` | 报数 | 同上 |
 | `cast.useTrueSolarTime` | bool | 否 | — | `true` | 是否按真太阳时定时辰 | 同上 |
+| `cast.calendarType` | string | 否 | `lunar`/`solar` | `lunar` | 仅小六壬 `xlrTime` 用：月与日按农历（闰月按本月计）或公历 | 同上 |
 | `cast.movingFrom` | string | 否 | `sum`/`number`/`manual` | `sum`（`manual` 模式为 `manual`） | 动爻取法 | 同上 |
 | `cast.longitude` / `cast.latitude` | num\|null | 否 | −180～180 / −90～90 | `null` | 经纬度（纬度目前只存档） | 同上 |
 | `cast.placeName` | string | 否 | 内置 10 城或自定义 | `''` | 地点名 | 同上 |
@@ -497,10 +517,11 @@
 | 字段路径 | 类型 | 必填 | 取值范围/枚举 | 默认 | 语义 | 出现在哪些工具 |
 |---|---|---|---|---|---|---|
 | `localTime` | string | **是** | `YYYY-MM-DD HH:mm` | — | 起卦钟表时间 | `cast`、`save_record` |
-| `method` | string | 否 | 4 种起卦法 | `numberAndTime` | 起卦法 | `cast`、`save_record` |
-| `numbers` | int[] | 否 | 每项 ≥1 | — | 报数 | `cast`、`save_record` |
+| `method` | string | 否 | 6 种起卦法（梅花四种＋`xlrNumbers`/`xlrTime`） | `numberAndTime` | 起卦法／筛选 | `cast`、`save_record`（起卦）；`list_records`（只看某一起卦法） |
+| `numbers` | int[] | 否 | 每项 ≥1 | — | 报数（小六壬 `xlrNumbers` 给 1–3 个） | `cast`、`save_record` |
 | `placeName` / `longitude` | string / num | 否 | 任意 / 东经度数 | — | 地点名 / 经度 | `cast`、`save_record` |
 | `useTrueSolarTime` | bool | 否 | — | `true` | 真太阳时开关 | `cast`、`save_record` |
+| `calendarType` | string | 否 | `lunar`/`solar` | `lunar` | 仅小六壬 `xlrTime` 用：月与日按农历（闰月按本月计）或公历 | `cast`、`save_record` |
 | `movingFrom` | string | 否 | `sum`/`number` | `sum` | 动爻取法 | `cast`、`save_record` |
 | `hexagram` | string | 否 | 卦名/卦序/卦符 | — | `manual` 时的本卦 | `cast`、`save_record` |
 | `movingPosition` | int | 否 | 1–6 | — | 动爻 | `cast`、`save_record` |
@@ -558,14 +579,17 @@
 ### 6.4 吉凶等级 `reading.grade.label`（6）
 `大吉` ≥55｜`吉` 25～54｜`中吉` 0～24｜`平` −8～−1｜`小凶` −40～−9｜`凶` <−40（总分 −100～+100）。`key`／`tone` 对应见 §5.4.4。
 
-### 6.5 起卦法 `cast.method`（4）
-| 内部 id | 中文名 | 需要的输入 | 推演要点 |
-|---|---|---|---|
-| `numberAndTime` | 一数一时辰 | 数 + 时 + 动 | 上卦取数除八，下卦取时辰数除八，动爻取二者之和除六 |
-| `twoNumbers` | 两数 | 数(2) + 时 + 动 | 先报数为上卦，后报数为下卦，两数之和除六取动爻 |
-| `timeOnly` | 年月日时 | 时 | 年支＋月＋日为上卦，再加时辰为下卦，总和除六取动爻；**动爻可省** |
-| `manual` | 已知卦象 | 本卦 + 动 | 互卦、变卦、体用由引擎推算 |
-`METHOD_NAMES` 另接受中文别名：`一数一时辰`、`一数加时辰`、`数与时` → `numberAndTime`；`两数`、`两数起卦` → `twoNumbers`；`年月日时` → `timeOnly`；`已知卦象`、`指定本卦` → `manual`。
+### 6.5 起卦法 `cast.method`（6）
+两种占法、六种起卦法：前四为**梅花易数**，后二为**道教小六壬**。
+| 内部 id | 占法 | 中文名 | 需要的输入 | 推演要点 |
+|---|---|---|---|---|
+| `numberAndTime` | 梅花易数 | 一数一时辰 | 数 + 时 + 动 | 上卦取数除八，下卦取时辰数除八，动爻取二者之和除六 |
+| `twoNumbers` | 梅花易数 | 两数 | 数(2) + 时 + 动 | 先报数为上卦，后报数为下卦，两数之和除六取动爻 |
+| `timeOnly` | 梅花易数 | 年月日时 | 时 | 年支＋月＋日为上卦，再加时辰为下卦，总和除六取动爻；**动爻可省** |
+| `manual` | 梅花易数 | 已知卦象 | 本卦 + 动 | 互卦、变卦、体用由引擎推算 |
+| `xlrNumbers` | 道教小六壬 | 报数起课 | 数(1–3) + 时 | 自大安起顺数，每落一宫下一数自该宫续数；三宫全显，末宫为主断 |
+| `xlrTime` | 道教小六壬 | 月日时辰起课 | 时（＋`calendarType`） | 大安起月、月上起日、日上起时；月与日按农历（默认，闰月按本月计）或公历 |
+`METHOD_NAMES` 是**卦条**用的梅花方法别名表，另接受中文别名：`一数一时辰`、`一数加时辰`、`数与时` → `numberAndTime`；`两数`、`两数起卦` → `twoNumbers`；`年月日时` → `timeOnly`；`已知卦象`、`指定本卦` → `manual`。小六壬没有卦条格式，其方法中文名见 `core/xiaoliuren.mjs` 的 `XLR_LABELS`（`xlrNumbers`＝「小六壬 · 报数起课」、`xlrTime`＝「小六壬 · 月日时辰起课」）。
 
 ### 6.6 动爻取法 `movingFrom`（3）
 | 取值 | 语义 | 默认 |
@@ -674,7 +698,7 @@
 ### 8.2 卦录 schema 的迁移承诺
 | 项 | 承诺 |
 |---|---|
-| 当前版本 | `CURRENT_SCHEMA = 3` |
+| 当前版本 | `CURRENT_SCHEMA = 4` |
 | 迁移方向 | **只向前**，不做破坏性重写 |
 | 迁移前 | **必须**备份到 `IF-FS-003` |
 | 迁移失败 / 缺迁移函数 | 按原样载入并告警，**不得**丢数据 |
@@ -773,6 +797,9 @@
 | `cast` 传 `method=numberAndTime` 而 `numbers` 为空 | 报数按 `1` 处理 | **未定义** |
 | `cast` 传 `useTrueSolarTime: null` | 按 `true` 处理（严格 `!== false` 才为假） | 可依赖 |
 | `cast` 想用 `useHourInMoving` | HTTP 层**不透传**该字段，从 REST 无法开启 | 可依赖 |
+| `cast` 传 `method=xlrNumbers` 而 `numbers` 为 0 个 / 超过 3 个 | 抛错「小六壬报数起课至少报一个数…」／「小六壬报数最多三个数…」→ `400` | 可依赖 |
+| `cast` 传 `method=xlrTime` 而未给 `calendarType` | 默认按 `lunar`（农历，闰月按本月计）；显式 `solar` 则取公历月／日 | 可依赖 |
+| `cast` 小六壬农历起课而 `localTime` 年份越出 1900–2100 | 抛错而不静默算错 → `400` | 可依赖 |
 | `POST /api/records` 的 `movingPosition` 传非数字 / 传 `"3"` | `NaN` → 引擎报错 `400` ／ `Number("3")` 得 `3`，正常接受 | 可依赖 |
 | `PATCH /api/records/:id` 传非白名单键 / 非法 `category` / 非法 `review.status` | 静默忽略 ／ 回落 `其他` ／ 回落 `待应验`，均不报错 | 可依赖 |
 | `DELETE /api/records/:id?hard=true` | 只有严格 `"1"` 才硬删，`true` 按软删 | 可依赖 |
@@ -803,7 +830,7 @@
 ## 十一、附录：接口数量核对表
 | 类别 | 数量 | 核对方式 |
 |---|---|---|
-| REST 端点 | **37** | `server/index.mjs` 中 `route('METHOD', '/path', handler)` 形式的调用数 |
+| REST 端点 | **50** | `server/index.mjs` 中 `route('METHOD', '/path', handler)` 形式的调用数 |
 | 插件机制接口 | **5** | `server/plugins.mjs` 的注册方法 4 个 ＋ `/plugin-assets/` 1 个 |
 | IPC 通道 | **7** | `desktop/main.mjs` 的 `ipcMain.handle` 6 个 ＋ `qxg:navigate` 1 个 |
 | MCP 方法 | **9** | `agent/mcp-server.mjs` 的 `switch (method)` 分支 8 个 ＋ 通知别名 1 个（`notifications/initialized` 与 `initialized` 等价，计 1） |

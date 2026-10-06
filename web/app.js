@@ -625,6 +625,99 @@ async function askAssistant(text) {
 }
 
 /* ============================================================
+ * 版本更新：更新说明卡 + 顶部可更新横幅
+ * ------------------------------------------------------------
+ * 两件事，都只在「版本变了」或「发行版有新版本」时才出现：
+ *   1. 首次打开某个版本 → 弹一次「这一版更新了什么」，关闭即记下 lastSeenVersion；
+ *   2. 启动后问一次 /api/update-check → 有更新的发行版就在顶部挂一条横幅。
+ * 检测本身在服务端（server/index.mjs，程序唯一的主动外呼）；这里是纯前端：
+ * 比版本、画横幅、记「看过了」。
+ * ========================================================== */
+
+/** 「这一版更新了什么」：键就是 package.json 里的版本号。
+ *  加新版本时在这里补一条——写给人看的大白话，别堆术语。 */
+const WHATS_NEW = {
+  '1.3.0': [
+    '修好了卦录「原文存录」里满屏的换行标记（原来每处换行都显示成一串尖括号标签），段内换行现在正常折行。',
+    '对话里输入的多行文字保留换行与格式（原来会被折成一整段）。',
+    '打开新版本时弹一次「更新内容」卡片；看过一次就不再打扰，直到下一版。',
+    '启动后看一眼 GitHub 发行版有没有新版本，有就在顶部挂一条提示；可在设置里关掉。',
+  ],
+};
+
+const UPDATE_REPO_URL = 'https://github.com/123twtd/vibe-wenxingua/releases';
+
+/** 版本比较：按数字段比（1.10.0 比 1.9.0 新），不是按字符串。
+ *  只比数字段就够——本程序不发预览版。latest 比 current 新才返回 true。 */
+function hasNewerVersion(current, latest) {
+  const seg = (v) => String(v || '').replace(/^v/i, '').trim().split('.').map((s) => parseInt(s, 10) || 0);
+  const a = seg(current);
+  const b = seg(latest);
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    if ((b[i] || 0) !== (a[i] || 0)) return (b[i] || 0) > (a[i] || 0);
+  }
+  return false;
+}
+
+/** 横幅的 HTML。纯函数，自检直接调它核对文案与入口（不碰网络、不碰 DOM）。 */
+function updateBannerHtml(info) {
+  return `<span class="ub-ic">⬆</span>
+    <span>发现新版本 <b>v${h(info.latest)}</b>——去发行页下载安装即可，不更新也不影响现在用。</span>
+    <span class="sp"></span>
+    <button class="btn sm primary" id="ub-go">查 看 更 新</button>
+    <button class="btn sm ghost" id="ub-close" title="这次先不看（下次启动还会提示一次）">✕</button>`;
+}
+
+/**
+ * 首次打开某个版本时弹一次更新说明。
+ * 「看过」记在 config.lastSeenVersion：关闭（按钮或点空白处）即写回，
+ * 写不进去也只是下次再弹一次，不影响任何功能。
+ */
+function maybeShowWhatsNew() {
+  const version = META?.app?.version || '';
+  const notes = WHATS_NEW[version];
+  if (!version || !notes) return;
+  if (META?.config?.lastSeenVersion === version) return;
+  let marked = false;
+  const remember = () => {
+    if (marked) return;
+    marked = true;
+    api.post('/api/config', { lastSeenVersion: version })
+      .then(() => { if (META?.config) META.config.lastSeenVersion = version; })
+      .catch(() => { /* 记不上就下次再弹，不打扰 */ });
+  };
+  modal(`<div class="card-title">这一版更新了什么 —— v${h(version)}</div>
+    <ul class="md-list">${notes.map((n) => `<li>${h(n)}</li>`).join('')}</ul>
+    <div class="small dim">看过一次就不再打扰，直到下一版；更新内容随程序一起发布，不依赖网络。</div>
+    <div class="chips" style="margin-top:10px"><button class="btn primary sm" id="wn-ok">知 道 了</button></div>`,
+  (root) => {
+    root.querySelector('#wn-ok').addEventListener('click', () => {
+      remember();
+      root.closest('.modal-mask')?.remove();
+    });
+    // 点空白处关掉也算看过——「关掉」就是关掉，不该下次再弹一遍
+    const mask = root.closest('.modal-mask');
+    mask?.addEventListener('click', (e) => { if (e.target === mask) remember(); });
+  });
+}
+
+/** 启动后问一次新版本。失败、被墙、关掉检测都静默——这条提示不是功能，少它不少。 */
+async function checkForUpdates() {
+  if (META?.config?.updateCheck === false) return;
+  const r = await api.get('/api/update-check').catch(() => null);
+  if (!r?.latest || !hasNewerVersion(META?.app?.version || '', r.latest)) return;
+  const el = document.getElementById('update-banner');
+  if (!el) return;
+  const info = { latest: r.latest, url: r.url || UPDATE_REPO_URL };
+  el.innerHTML = updateBannerHtml(info);
+  el.classList.add('on');
+  /* 打开方式与文档页外链同一条路：浏览器里新开标签；桌面版被主进程的
+     setWindowOpenHandler 接住，改用系统浏览器打开（见 desktop/main.mjs）。 */
+  el.querySelector('#ub-go')?.addEventListener('click', () => window.open(info.url, '_blank', 'noopener'));
+  el.querySelector('#ub-close')?.addEventListener('click', () => el.classList.remove('on'));
+}
+
+/* ============================================================
  * 启动
  * ========================================================== */
 
@@ -687,6 +780,11 @@ async function boot() {
   window.addEventListener('hashchange', () => render());
   await render();
 
+  // 版本更新两件事：说明卡立刻弹（纯本地，不等网络）；新版本检测晚 1.5 秒再打——
+  // 先把界面画完，且无论成败都不影响启动（见 checkForUpdates）
+  maybeShowWhatsNew();
+  setTimeout(() => { checkForUpdates(); }, 1500);
+
   // 面板：宽度与开合从 localStorage 恢复；**默认开**——用户要的就是随时能问
   applyPanelWidth(storedPanelWidth());
   await setPanelOpen(lsGet(LS_OPEN) !== 'closed', { persist: false });
@@ -713,6 +811,11 @@ window.__qxg = {
   loadSessions,
   /** 插件启停/热载之后要调它，侧栏入口才会跟着 meta 一起变 */
   refreshMeta,
+  /** 版本更新：自检要验「更新说明有没有注记」「版本比较」「横幅 HTML」——
+   *  前两件是纯函数、最后一件不碰网络，都适合单独断言 */
+  whatsNew: WHATS_NEW,
+  hasNewerVersion,
+  updateBannerHtml,
   get panel() { return agentPanel; },
   get palette() { return palette; },
   get meta() { return META; },

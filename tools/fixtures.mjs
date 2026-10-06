@@ -30,13 +30,13 @@ const recordMod = await load('core/record.mjs');
 const SAMPLE_PLACE = { placeName: '示例城', longitude: 113.0 };
 
 /**
- * 六条合成起卦输入。刻意覆盖四种起卦法中的三种与两种动爻取法
- * （numberAndTime 的 number/sum、twoNumbers、manual），
- * 好让走势、校勘、迁移等自检拿到与真实数据同构的样本。
+ * 八条合成起卦输入：六条梅花（覆盖四种起卦法中的三种与两种动爻取法），
+ * 两条小六壬（报数与月日时辰各一）——好让走势、校勘、迁移、两种占法的
+ * 分区渲染等自检都拿到与真实数据同构的样本。
  *
- * 时间全部落在同一天：走势自检要验「只按起卦时间看，长期之事会挤成一团」，
- * 真实数据正是同一天连续起卦，这里对齐这个特征。
- * 类别刻意让「心态情绪」出现两卦，走势自检要验「同领域多卦综合成一条基准」。
+ * 时间全部落在相邻两天：走势自检要验「只按起卦时间看，长期之事会挤成一团」，
+ * 真实数据正是同一天连续起卦，这里对齐这个特征。类别刻意让「心态情绪」出现多卦，
+ * 走势自检要验「同领域多卦综合成一条基准」。
  */
 export const SAMPLE_CASTS = [
   {
@@ -91,6 +91,27 @@ export const SAMPLE_CASTS = [
     cast: {
       method: 'manual', hexagram: '山水蒙', movingPosition: 5, localTime: '2024-03-15 19:50',
       ...SAMPLE_PLACE, useTrueSolarTime: false, category: '决策取舍',
+    },
+  },
+  // ── 小六壬两条：时间**刻意早于**上面全部梅花费录 ──
+  // 列表按起卦时间倒序，自检的「第一条」因此仍是梅花费录；这两条排在末尾，
+  // 专门用来验「另一种占法同录一库、但渲染与统计各走各的」。
+  {
+    title: '示例·小六壬报数：近事之应',
+    category: '决策取舍',
+    question: '示例：这件近事，几日之内可有回音？',
+    cast: {
+      method: 'xlrNumbers', numbers: [3, 5, 2], localTime: '2024-03-14 09:00',
+      ...SAMPLE_PLACE, useTrueSolarTime: false, category: '决策取舍',
+    },
+  },
+  {
+    title: '示例·小六壬月日时：农时之课',
+    category: '心态情绪',
+    question: '示例：按农时起一课，看眼下这一段心气。',
+    cast: {
+      method: 'xlrTime', calendarType: 'lunar', localTime: '2024-03-14 21:00',
+      ...SAMPLE_PLACE, useTrueSolarTime: true, category: '心态情绪',
     },
   },
 ];

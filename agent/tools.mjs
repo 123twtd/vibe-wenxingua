@@ -15,7 +15,10 @@ import { fileURLToPath } from 'node:url';
 
 import { CATEGORIES } from '../core/verdict.mjs';
 import { METHOD_LABELS } from '../core/guaTiao.mjs';
+import { xlrBriefOf, isXlrChart, XLR_METHODS, XLR_LABELS } from '../core/xiaoliuren.mjs';
 import { DEFAULT_LEVEL, LEVEL_IDS, allows, denyMessage, levelById, normalizeLevel } from './permissions.mjs';
+
+const XLR_METHOD_IDS = XLR_METHODS.map((m) => m.id);
 
 const S = (o) => o; // 仅为可读性
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -37,6 +40,8 @@ function recordRequired() {
 
 /** 把卦局 + 断语压成适合模型阅读的紧凑结构 */
 function chartBrief(chart, reading, { withTone = true } = {}) {
+  // 小六壬与梅花是两套术语：走各自的简报，别让模型拿到对不上的字段
+  if (isXlrChart(chart)) return xlrBriefOf(chart, withTone ? reading : null);
   const c = chart;
   return {
     卦录: {
@@ -69,6 +74,23 @@ function chartBrief(chart, reading, { withTone = true } = {}) {
 }
 
 function recordBrief(r) {
+  // 小六壬记录：给三宫与末宫，不给本卦／体用（它本来就没有那些东西）
+  if (isXlrChart(r.chart)) {
+    const c = r.chart;
+    return {
+      id: r.id,
+      title: r.title,
+      category: r.category,
+      方法: XLR_LABELS[r.cast?.method] || '小六壬',
+      起课时间: r.cast?.localTime || '',
+      三宫: c.chainText || '',
+      末宫: c.result ? `${c.result.name}（${c.result.grade?.label || ''}）` : '',
+      总评: r.reading?.grade?.label || '',
+      谶: r.reading?.signature || '',
+      复盘: r.review?.status || '',
+      校勘数: (r.corrections || []).length,
+    };
+  }
   return {
     id: r.id,
     title: r.title,
@@ -112,18 +134,20 @@ export function createToolkit({ store, core, plugins = null, permission = DEFAUL
     movingFrom: a.movingFrom,
     hexagram: a.hexagram,
     movingPosition: a.movingPosition,
+    calendarType: a.calendarType,
     question: a.question,
     category: a.category,
   });
 
   const CAST_PROPS = S({
-    method: { type: 'string', enum: ['numberAndTime', 'twoNumbers', 'timeOnly', 'manual'], description: `起卦之法。numberAndTime＝一数＋时辰（默认）；twoNumbers＝两数；timeOnly＝年月日时；manual＝已知本卦与动爻。` },
-    numbers: { type: 'array', items: { type: 'integer', minimum: 1 }, description: '报数。一数一时辰给 1 个；两数给 2 个；timeOnly 不用。' },
+    method: { type: 'string', enum: ['numberAndTime', 'twoNumbers', 'timeOnly', 'manual', ...XLR_METHOD_IDS], description: `起卦法。numberAndTime＝一数＋时辰（默认）；twoNumbers＝两数；timeOnly＝年月日时；manual＝已知本卦与动爻；xlrNumbers＝小六壬报数起课（给 1–3 个报数）；xlrTime＝小六壬月日时辰起课（配 calendarType）。` },
+    numbers: { type: 'array', items: { type: 'integer', minimum: 1 }, description: '报数。梅花：一数一时辰给 1 个；两数给 2 个；timeOnly 不用。小六壬 xlrNumbers：1–3 个（每个是你当下心里报的数，不许编）。' },
     localTime: { type: 'string', description: '起卦的钟表时间，格式 YYYY-MM-DD HH:mm。必填。' },
     placeName: { type: 'string', description: '地点名（如 兰州、上海）。用于取经度算真太阳时。' },
     longitude: { type: 'number', description: '东经度数。给了就以它为准，否则按 placeName 查表。' },
     useTrueSolarTime: { type: 'boolean', description: '是否按真太阳时定时辰。默认 true（推荐）。' },
-    movingFrom: { type: 'string', enum: ['sum', 'number'], description: '动爻取法。sum＝数与时之和除六（常法，默认）；number＝仅以报数除六。' },
+    calendarType: { type: 'string', enum: ['lunar', 'solar'], description: '仅小六壬 xlrTime 用：月与日按农历（lunar，默认，闰月按本月计）还是公历（solar）。用户没说清时先问，别替他定。' },
+    movingFrom: { type: 'string', enum: ['sum', 'number'], description: '动爻取法（仅梅花一数＋时辰）。sum＝数与时之和除六（常法，默认）；number＝仅以报数除六。' },
     hexagram: { type: 'string', description: 'method=manual 时的本卦，如「泽水困」「困」「47」「䷮」皆可。' },
     movingPosition: { type: 'integer', minimum: 1, maximum: 6, description: '动爻（自下而上第几爻）。' },
     question: { type: 'string', description: '所问之事。一事一占，单一、具体、可验证。' },
@@ -134,7 +158,7 @@ export function createToolkit({ store, core, plugins = null, permission = DEFAUL
     {
       name: 'cast',
       title: '起卦（只看不入库）',
-      description: '按梅花易数正法起一卦，返回卦象、体用生克、月令旺衰、吉凶评分与完整断语（谶／主／互／变／断／宜／忌／应期 + 通俗解）。不写入卦录。',
+      description: '起一卦：梅花易数给卦象、体用生克、月令旺衰、吉凶评分与七段断语；小六壬（method=xlrNumbers／xlrTime）给三宫、六神、末宫断辞与应期——两套术语不混用。不写入卦录。',
       parameters: { type: 'object', properties: CAST_PROPS, required: ['localTime'] },
       async handler(a) {
         const chart = castOf(a);
@@ -145,7 +169,7 @@ export function createToolkit({ store, core, plugins = null, permission = DEFAUL
     {
       name: 'save_record',
       title: '起卦并存入卦录',
-      description: '起一卦并落盘为一条卦录。参数与 cast 相同，另可给 title／narrative（原文）／tags，以及 background／plan／collation／qa 四项补充存录。返回值含新卦录 id。',
+      description: '起一卦（梅花或小六壬皆可）并落盘为一条卦录。参数与 cast 相同，另可给 title／narrative（原文）／tags，以及 background／plan／collation／qa 四项补充存录。返回值含新卦录 id。',
       parameters: S({
         type: 'object',
         properties: {
@@ -189,7 +213,8 @@ export function createToolkit({ store, core, plugins = null, permission = DEFAUL
             cast: {
               method: a.method || 'numberAndTime', numbers: a.numbers, localTime: a.localTime,
               longitude: a.longitude, placeName: a.placeName, useTrueSolarTime: a.useTrueSolarTime,
-              movingFrom: a.movingFrom, question: a.question, category: a.category,
+              movingFrom: a.movingFrom, calendarType: a.calendarType,
+              question: a.question, category: a.category,
             },
           });
         store.save(rec);
@@ -212,7 +237,13 @@ export function createToolkit({ store, core, plugins = null, permission = DEFAUL
         for (const b of blocks) {
           try {
             if (!b.ok) {
-              failed.push({ 所缺: b.missing.join('、'), 卦: b.claimed.ben || '未定', 原因: '卦条信息不完整' });
+              failed.push({
+                所缺: b.missing.join('、'),
+                卦: b.claimed.ben || '未定',
+                原因: b.unsupported === 'xlr'
+                  ? '卦条 v1 只描述梅花易数；小六壬请用 cast／save_record 的 method:xlrNumbers｜xlrTime 起课'
+                  : '卦条信息不完整',
+              });
               continue;
             }
             const id = core.record.makeId(b.fields.localTime, store.ids());
@@ -259,7 +290,7 @@ export function createToolkit({ store, core, plugins = null, permission = DEFAUL
     {
       name: 'list_records',
       title: '列出卦录',
-      description: '按关键词、类别、吉凶、复盘状态筛选卦录，返回摘要列表（按起卦时间倒序）。',
+      description: '按关键词、类别、吉凶、复盘状态、起卦法筛选卦录，返回摘要列表（按起卦时间倒序）。',
       parameters: S({
         type: 'object',
         properties: {
@@ -267,6 +298,7 @@ export function createToolkit({ store, core, plugins = null, permission = DEFAUL
           category: { type: 'string', enum: CATEGORIES },
           grade: { type: 'string', enum: ['大吉', '吉', '中吉', '平', '小凶', '凶'] },
           review: { type: 'string', description: '复盘状态：待应验／应验中／已应验／未应验／已过期／无需应验。' },
+          method: { type: 'string', enum: ['numberAndTime', 'twoNumbers', 'timeOnly', 'manual', ...XLR_METHOD_IDS], description: '只看某一起卦法（如只看小六壬给 xlrNumbers／xlrTime）。' },
           limit: { type: 'integer', minimum: 1, maximum: 100, description: '最多返回几条，默认 20。' },
         },
       }),
@@ -275,6 +307,7 @@ export function createToolkit({ store, core, plugins = null, permission = DEFAUL
         if (a.category) items = items.filter((r) => r.category === a.category);
         if (a.grade) items = items.filter((r) => r.reading?.grade?.label === a.grade);
         if (a.review) items = items.filter((r) => r.review?.status === a.review);
+        if (a.method) items = items.filter((r) => r.cast?.method === a.method);
         if (a.q) {
           const q = String(a.q).toLowerCase();
           items = items.filter((r) => JSON.stringify({
@@ -471,14 +504,21 @@ export function createToolkit({ store, core, plugins = null, permission = DEFAUL
       async handler() {
         return {
           卦条格式: {
-            说明: '一行一个字段的纯文本；多条用一行 --- 分隔。这是保证稳定的导入契约。',
+            说明: '一行一个字段的纯文本；多条用一行 --- 分隔。这是保证稳定的导入契约。**卦条只描述梅花易数**。',
             示例: core.guaTiao.template(),
             字段别名: core.guaTiao.FIELD_ALIASES,
             起卦法中文名: core.guaTiao.METHOD_LABELS,
           },
+          小六壬: {
+            说明: '小六壬三宫之课不走卦条导入（没有本卦与动爻）。请用 cast／save_record 起课：'
+              + 'method:xlrNumbers 报一至三数；method:xlrTime 按月日时辰（calendarType:lunar 农历，默认；solar 公历）。'
+              + '术语用六宫、六神、三宫、末宫——不涉体用生克。',
+            起课法: XLR_LABELS,
+            六宫: core.xiaoliuren.XLR_PALACES.map((p) => `${p.name}（${p.deity}·${p.element}·${p.direction}·神数${p.spiritText}）`),
+          },
           卦录JSON: {
             版本: core.migrate.CURRENT_SCHEMA,
-            说明: '完整结构见 schema/record.schema.json；用 tools/validate.mjs 校验。',
+            说明: '完整结构见 schema/record.schema.json（chart／reading 为两种占法的双形态）；用 tools/validate.mjs 校验。',
             必填: recordRequired(),
           },
           类别取值: CATEGORIES,

@@ -14,8 +14,9 @@ import { interpret, normalizeCategory, CATEGORIES } from './verdict.mjs';
 import { library, sixLines } from './hexagram.mjs';
 import { calendarInfo } from './calendar.mjs';
 import { computeYingqi } from './yingqi.mjs';
+import { computeXlrYingqi, isXlrChart, isXlrMethod, XLR_PALACE_NAMES } from './xiaoliuren.mjs';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const REVIEW_STATUS = ['待应验', '应验中', '已应验', '未应验', '已过期', '无需应验'];
 
@@ -50,6 +51,7 @@ export function resetSeqCache() {
 export function audit(claimed, chart) {
   const out = [];
   if (!claimed) return out;
+  if (isXlrChart(chart)) return auditXlr(claimed, chart);
   const lib = library();
 
   /** 以卦典为准比对卦名：认不出的不报，避免误伤 */
@@ -92,6 +94,35 @@ export function audit(claimed, chart) {
 }
 
 /**
+ * 小六壬校勘：只比对三宫名（人在口述里认得出的就是宫名）。
+ * 认不出的不报，避免误伤；不做六爻／体用那一路的比对——那是梅花的事。
+ */
+function auditXlr(claimed, chart) {
+  const out = [];
+  const stated = Array.isArray(claimed?.palaces) ? claimed.palaces : [];
+  stated.forEach((s, i) => {
+    const name = String(s || '').replace(/[（(].*?[)）]/g, '').trim();
+    if (!XLR_PALACE_NAMES.includes(name)) return;
+    const computed = chart.chain?.[i];
+    if (computed && computed !== name) {
+      out.push({
+        field: `palace${i + 1}`,
+        label: chart.palaces?.[i]?.role || `第 ${i + 1} 宫`,
+        stated: name,
+        computed,
+        note: '三宫顺数与所记不符，请核对起课之数与（或）月日时辰。',
+      });
+    }
+  });
+  return out;
+}
+
+/** 应期：两种占法各有一套算法，但对记录只暴露同一种形状 */
+function yingqiOf(chart, from) {
+  return isXlrChart(chart) ? computeXlrYingqi(chart, { from }) : computeYingqi(chart, { from });
+}
+
+/**
  * 由起卦输入构造完整卦录（未落盘）。
  * @param {object} p
  * @param {object} p.cast      传给 core/divination.cast 的输入
@@ -100,8 +131,10 @@ export function audit(claimed, chart) {
 export function buildRecord(p) {
   // 别人给的卦常只写「报数、时间、动爻」而不说用哪一路取法。若所述动爻只与
   // 「仅以报数除六」吻合，就据此反推取法，忠实复现原卦，而不是误记成校勘。
+  // 小六壬没有动爻，不参与这一路推断。
   let castInput = p.cast;
-  if (castInput && castInput.method !== 'manual' && p.claimed?.moving && !castInput.movingFrom) {
+  if (castInput && castInput.method !== 'manual' && !isXlrMethod(castInput.method)
+    && p.claimed?.moving && !castInput.movingFrom) {
     const mf = inferMovingFrom(castInput, p.claimed.moving);
     if (mf !== castInput.movingFrom) castInput = { ...castInput, movingFrom: mf };
   }
@@ -118,7 +151,7 @@ export function buildRecord(p) {
     chart,
     reading,
     // 应期：与断语「应期」那一段同源，但量化成区间，好给走势图落点用
-    yingqi: computeYingqi(chart, { from: localTime }),
+    yingqi: yingqiOf(chart, localTime),
     narrative: p.narrative || '',
     narrativeHtml: p.narrativeHtml || '',
     background: p.background || '',
@@ -193,7 +226,7 @@ export function recompute(record) {
     reading,
     // 重算就是把引擎的当前输出重新定格，应期也是引擎输出的一部分，一并更新。
     // 注意：`reading` 快照被替换是「用户主动点重算」的结果，不是引擎升级时自动改的。
-    yingqi: computeYingqi(chart, { from: chart.inputs?.localTime || record.cast?.localTime }),
+    yingqi: yingqiOf(chart, chart.inputs?.localTime || record.cast?.localTime),
     corrections: audit(record.claimed, chart),
     updatedAt: new Date().toISOString(),
     revisionCount: (record.revisionCount || 0) + 1,
@@ -243,6 +276,9 @@ export function normalizeRecord(raw) {
 function defaultTitle(raw) {
   const q = String(raw.question || '').trim();
   if (q) return q.length > 24 ? `${q.slice(0, 24)}…` : q;
+  if (isXlrChart(raw.chart)) {
+    return raw.chart?.result ? `${raw.chart.result.name}之课` : '小六壬之课';
+  }
   const b = raw.chart?.ben;
   return b ? `${b.fullName}之占` : '未题之占';
 }
@@ -250,6 +286,7 @@ function defaultTitle(raw) {
 /** 卦录摘要（列表用，避免整包传输） */
 export function summarize(record) {
   const c = record.chart || {};
+  const xlr = isXlrChart(c);
   return {
     id: record.id,
     title: record.title,
@@ -258,6 +295,9 @@ export function summarize(record) {
     localTime: record.cast?.localTime || '',
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+    // 方法标识：列表徽章与筛选只从这里取，前端不许靠 ben 是否为空去猜
+    method: record.cast?.method || c.method || '',
+    kind: xlr ? 'xlr' : 'meihua',
     grade: record.reading?.grade || c.score?.grade || null,
     score: c.score?.total ?? null,
     signature: record.reading?.signature || '',
@@ -269,6 +309,14 @@ export function summarize(record) {
       ti: `${c.tiyong.ti.name}${c.tiyong.ti.element}`,
       yong: `${c.tiyong.yong.name}${c.tiyong.yong.element}`,
       relation: c.tiyong.relation.label,
+    } : null,
+    // 小六壬的三宫摘要（梅花记录为 null）
+    chainText: xlr ? (c.chainText || '') : '',
+    palaces: xlr ? (c.palaces || []).map((p) => ({
+      role: p.role, name: p.name, deity: p.deity, element: p.element, grade: p.grade?.label || '',
+    })) : null,
+    result: xlr && c.result ? {
+      role: c.result.role, name: c.result.name, grade: c.result.grade?.label || '',
     } : null,
     review: record.review,
     origins: record.origin?.kind || 'cast',

@@ -59,6 +59,11 @@ const HORIZONS = [
 
 const DAY = 86400000;
 
+/** 天数 → 远近分档（小六壬的应期也走这一张表，免得两处口径不一） */
+export function horizonFor(maxDays) {
+  return HORIZONS.find((h) => maxDays <= h.max) || HORIZONS[HORIZONS.length - 1];
+}
+
 function tsOf(localTime) {
   const m = String(localTime || '').match(/(\d{4})\D(\d{1,2})\D(\d{1,2})\D(\d{1,2})\D(\d{2})/);
   if (!m) return null;
@@ -180,7 +185,7 @@ export function computeYingqi(chart, opts = {}) {
   if (ceilingDays !== null) max = Math.min(max, ceilingDays);
   max = Math.max(2, max);
   const min = Math.max(1, Math.min(max - 1, Math.round(max * 0.4)));
-  const horizon = HORIZONS.find((h) => max <= h.max) || HORIZONS[HORIZONS.length - 1];
+  const horizon = horizonFor(max);
 
   const from = fromTs ? fmtDate(fromTs) : '';
   const to = fromTs ? fmtDate(fromTs + max * DAY) : '';

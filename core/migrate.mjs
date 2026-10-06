@@ -15,7 +15,7 @@
 
 import { computeYingqi } from './yingqi.mjs';
 
-export const CURRENT_SCHEMA = 3;
+export const CURRENT_SCHEMA = 4;
 
 /**
  * 迁移登记表：键是**源版本**，值把该版本的记录转成下一版本。
@@ -75,6 +75,15 @@ export const MIGRATIONS = {
     if (rec.qa === undefined) rec.qa = '';
     return rec;
   },
+
+  /**
+   * v3 → v4：收录「道教传统小六壬」——`cast.method` 新增 xlrNumbers／xlrTime 两项，
+   * `chart`／`reading` 允许小六壬形态（三宫＋末宫，不设六爻体用）。
+   *
+   * 为什么不动老记录：老记录全是梅花，结构一字未变，无需补写。小六壬的判别位是
+   * `chart.kind`，**缺省即梅花**——所以这一版对旧记录是**纯空操作**，不碰任何已有字段。
+   */
+  3: (rec) => rec,
 };
 
 /** 这条记录是不是 v1 升上来的、还没补应期 */

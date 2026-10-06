@@ -10,7 +10,8 @@
 import {
   api, h, attr, toast, modal, debounce, gradeTag, fmtLocal, fmtFull,
   toLocalInput, fromLocalInput, nowLocalInput,
-  liuyaoHtml, hexRowHtml, tiyongHtml, readingHtml, calendarHtml, renderMarkdown,
+  readingHtml, calendarHtml, renderMarkdown,
+  chartHtml, xlrLunarHtml, methodBadge,
 } from './api.js';
 import { renderLineChart, legendHtml } from './chart.js';
 // 对话只长在右侧那个常驻面板里（web/index.html 的 .agent-panel），
@@ -37,6 +38,9 @@ async function hexagrams() {
 
 const TONE_ORDER = { 大吉: 0, 吉: 1, 中吉: 2, 平: 3, 小凶: 4, 凶: 5 };
 
+/** 起卦法 id → 中文名（从 meta.methods 现取，不另写一份） */
+const methodLabelOf = (meta, id) => (meta?.methods || []).find((m) => m.id === id)?.label || id || '';
+
 /* ============================================================
  * 概览
  * ========================================================== */
@@ -60,7 +64,7 @@ export const dashboard = {
       : `<div class="empty"><div class="big">☰</div>尚无卦录。<br><span class="small">去「起卦台」起第一卦，或在「导入」里粘贴旧卦。</span></div>`;
 
     const sigs = items.filter((i) => i.signature).slice(0, 6)
-      .map((i) => `<div class="classic"><div class="t">${h(i.signature)}</div><span class="s">${h(fmtLocal(i.localTime))}　${h(i.ben?.fullName || '')}</span></div>`).join('');
+      .map((i) => `<div class="classic"><div class="t">${h(i.signature)}</div><span class="s">${h(fmtLocal(i.localTime))}　${h(i.ben?.fullName || i.chainText || '')}</span></div>`).join('');
 
     // 侧栏与状态栏已经显示总数，这里只放「需要算一算才知道」的指标
     const today = new Date();
@@ -69,10 +73,15 @@ export const dashboard = {
       : 0;
     const pending = items.filter((i) => i.review?.status === '待应验' || i.review?.status === '应验中').length;
     const withCorr = items.filter((i) => (i.corrections || []).length).length;
-    const avgScore = items.length
-      ? Math.round(items.reduce((s, i) => s + (i.score ?? 0), 0) / items.length) : 0;
-    const goodRatio = items.length
-      ? Math.round((items.filter((i) => (i.score ?? 0) >= 25).length / items.length) * 100) : 0;
+    // 平均总评与吉比是梅花的评分口径：小六壬没有分数，不进这两个分母
+    const scoredItems = items.filter((i) => typeof i.score === 'number');
+    const avgScore = scoredItems.length
+      ? Math.round(scoredItems.reduce((s, i) => s + (i.score ?? 0), 0) / scoredItems.length) : 0;
+    const goodRatio = scoredItems.length
+      ? Math.round((scoredItems.filter((i) => (i.score ?? 0) >= 25).length / scoredItems.length) * 100) : 0;
+    const bySchool = { 梅花易数: 0, 道教小六壬: 0 };
+    items.forEach((i) => { bySchool[i.kind === 'xlr' ? '道教小六壬' : '梅花易数'] += 1; });
+    const meihuaCount = bySchool['梅花易数'];
 
     const stat = (n, l) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`;
 
@@ -84,7 +93,7 @@ export const dashboard = {
         ${stat(`${goodRatio}%`, '吉 以 上 占 比')}
         ${stat(pending, '待 应 验')}
         ${stat(withCorr, '含 校 勘')}
-        ${stat(new Set(items.map((i) => i.ben?.name)).size, '出 现 卦 数')}
+        ${stat(new Set(items.map((i) => i.ben?.name).filter(Boolean)).size, '出 现 卦 数')}
         ${stat(span, '跨 度（天）')}
         ${stat(meta.knowledge.withYaoci, '卦 典 爻 辞')}
       </div>
@@ -95,8 +104,9 @@ export const dashboard = {
           <div class="rec-list">${recentHtml}</div>
         </div>
         <div>
+          <div class="card"><div class="card-title">占 法 分 布</div>${bars(bySchool, items.length)}</div>
           <div class="card"><div class="card-title">总 评 分 布</div>${bars(stats.byGrade, stats.total)}</div>
-          <div class="card"><div class="card-title">体 用 分 布</div>${bars(stats.byRelation, stats.total)}</div>
+          <div class="card"><div class="card-title">体 用 分 布<span class="sp dim tiny">仅梅花</span></div>${bars(stats.byRelation, Math.max(1, meihuaCount))}</div>
           <div class="card"><div class="card-title">复 盘 状 态</div>${bars(stats.byReview, stats.total)}</div>
         </div>
       </div>
@@ -151,7 +161,7 @@ export const records = {
   title: '卦 录',
   desc: '按时间倒序。点开可读全卦、复盘、导出。筛选条件只作用于本页，不占侧栏。',
   async render(ctx) {
-    const state = { q: '', category: '', grade: '', review: '', sort: '' };
+    const state = { q: '', school: '', category: '', grade: '', review: '', sort: '' };
     const box = document.createElement('div');
     const count = document.createElement('span');
 
@@ -183,6 +193,13 @@ export const records = {
         <span class="muted tiny" id="rcount"></span>
       </div>
       <div class="toolbar">
+        <span class="tb-label">方法</span>
+        <div class="chips" id="fchips0">
+          <span class="chip on" data-k="school" data-v="">方法不限</span>
+          <span class="chip" data-k="school" data-v="meihua">梅花易数</span>
+          <span class="chip" data-k="school" data-v="xlr">道教小六壬</span>
+        </div>
+        <span class="tb-sep"></span>
         <span class="tb-label">吉凶</span>
         <div class="chips" id="fchips2">
           <span class="chip on" data-k="grade" data-v="">吉凶不限</span>
@@ -237,21 +254,26 @@ export const records = {
 function recCard(item) {
   const g = item.grade;
   const tone = g?.tone || 'neutral';
-  return `<div class="rec" data-id="${attr(item.id)}">
-    <div class="viz">
-      <div class="s">${h(item.ben?.symbol || '䷀')}</div>
-      <div class="n">${h(item.ben?.fullName || '')}</div>
-    </div>
-    <div class="mid">
-      <div class="t">${h(item.title || '未题之占')}</div>
-      <div class="q">${h(item.question || '')}</div>
-      <div class="m">
-        ${h(fmtLocal(item.localTime))}　<b>${h(item.category)}</b>　
+  const isXlr = item.kind === 'xlr';
+  // 小六壬没有卦符与互变体用：列表摘要改走三宫—末宫，并带占法徽章，一眼分得清
+  const viz = isXlr
+    ? `<div class="viz"><div class="s xlr">六</div><div class="n">${h(item.result?.name || '小六壬')}</div></div>`
+    : `<div class="viz"><div class="s">${h(item.ben?.symbol || '䷀')}</div><div class="n">${h(item.ben?.fullName || '')}</div></div>`;
+  const metaLine = isXlr
+    ? `${h(fmtLocal(item.localTime))}　<b>${h(item.category)}</b>　
+        三宫 ${h(item.chainText || '—')}　末宫 ${h(item.result?.name || '—')}（${h(item.result?.grade || '')}）
+        ${item.signature ? `<br><span class="dim">谶　${h(item.signature)}</span>` : ''}`
+    : `${h(fmtLocal(item.localTime))}　<b>${h(item.category)}</b>　
         互 ${h(item.hu?.fullName || '—')} → 变 ${h(item.bian?.fullName || '—')}　
         ${h(item.tiyong ? `${item.tiyong.ti}／${item.tiyong.yong}·${item.tiyong.relation}` : '')}　
         ${item.moving ? `动 ${h(item.moving.yaoTitle)}` : ''}
-        ${item.signature ? `<br><span class="dim">谶　${h(item.signature)}</span>` : ''}
-      </div>
+        ${item.signature ? `<br><span class="dim">谶　${h(item.signature)}</span>` : ''}`;
+  return `<div class="rec" data-id="${attr(item.id)}">
+    ${viz}
+    <div class="mid">
+      <div class="t">${methodBadge(item)} ${h(item.title || '未题之占')}</div>
+      <div class="q">${h(item.question || '')}</div>
+      <div class="m">${metaLine}</div>
     </div>
     <div class="right">
       <span class="tag ${tone}">${h(g?.label || '—')}</span>
@@ -273,6 +295,7 @@ export const recordDetail = {
     const c = rec.chart;
     const r = rec.reading;
     const meta = await api.get('/api/meta');
+    const isXlr = c?.kind === 'xlr';
 
     const corrections = (rec.corrections || []).length
       ? `<div class="card"><div class="card-title" style="color:var(--cinnabar-2)">校 勘</div>
@@ -293,7 +316,7 @@ export const recordDetail = {
         </label>
       </div>
       <label class="fld"><span>实况如何</span>
-        <textarea id="rv-result" placeholder="后来实际发生了什么？与本卦何处相合、何处不合？">${h(review.result || '')}</textarea>
+        <textarea id="rv-result" placeholder="${isXlr ? '后来实际发生了什么？三宫与末宫断辞何处应了、何处没应？' : '后来实际发生了什么？与本卦何处相合、何处不合？'}">${h(review.result || '')}</textarea>
       </label>
       <div class="chips">
         <button class="btn primary sm" id="rv-save">存 复 盘</button>
@@ -325,6 +348,7 @@ export const recordDetail = {
       html: `
         <div class="toolbar">
           <span class="gold" style="letter-spacing:1px">${h(rec.title)}</span>
+          ${methodBadge(rec.cast)}
           <span class="tb-sep"></span>
           <span class="muted tiny">${h(fmtFull(rec.cast?.localTime))}　·　${h(rec.category)}　·　编号 <span class="mono">${h(rec.id)}</span></span>
           ${(rec.tags || []).map((t) => `<span class="tag neutral">${h(t)}</span>`).join('')}
@@ -340,24 +364,23 @@ export const recordDetail = {
         ${rec.question ? `<div class="card"><div class="card-title">所 问 之 事</div><div style="color:#d8d1c2">${h(rec.question)}</div></div>` : ''}
 
         <div class="card">
-          <div class="card-title">卦 象</div>
-          ${hexRowHtml(c)}
-          <div class="hr"></div>
-          ${liuyaoHtml(c)}
-          ${tiyongHtml(c)}
+          <div class="card-title">${isXlr ? '三 宫' : '卦 象'}</div>
+          ${chartHtml(c)}
         </div>
 
-        ${r ? readingHtml(r, { chart: c }) : '<div class="card err">此卦录缺少断语，可点「重算断语」生成。</div>'}
+        ${r ? readingHtml(r, { chart: c, toneTitle: isXlr ? '断 课 定 调' : undefined }) : '<div class="card err">此卦录缺少断语，可点「重算断语」生成。</div>'}
 
         ${corrections}
 
         <div class="grid c2">
-          <div class="card"><div class="card-title">起 卦 推 演</div>
+          <div class="card"><div class="card-title">${isXlr ? '起 课 推 演' : '起 卦 推 演'}</div>
             <ol class="cast-steps">${(c.casting?.steps || []).map((s) => `<li>${h(s)}</li>`).join('')}</ol>
             <div class="hr"></div>
-            <div class="small dim">起卦之法：${h(c.method)}　报数：${h((rec.cast?.numbers || []).join(' / ') || '—')}　真太阳时：${rec.cast?.useTrueSolarTime ? '是' : '否'}</div>
+            <div class="small dim">${isXlr
+              ? `起课之法：${h(methodLabelOf(meta, c.method))}　取数：${h((c.casting?.counts || []).join(' / ') || '—')}（${h((c.casting?.countLabels || []).join('／') || '—')}）　真太阳时：${rec.cast?.useTrueSolarTime ? '是' : '否'}`
+              : `起卦之法：${h(methodLabelOf(meta, c.method))}　报数：${h((rec.cast?.numbers || []).join(' / ') || '—')}　真太阳时：${rec.cast?.useTrueSolarTime ? '是' : '否'}`}</div>
           </div>
-          <div class="card"><div class="card-title">时 间 与 历 法</div>${calendarHtml(c.calendar)}</div>
+          <div class="card"><div class="card-title">时 间 与 历 法</div>${isXlr ? xlrLunarHtml(c) : ''}${calendarHtml(c.calendar)}</div>
         </div>
 
         ${reviewHtml}
@@ -466,7 +489,15 @@ export const castDesk = {
           <div class="card">
             <div class="card-title">起 卦 之 法</div>
             <label class="fld"><span>方法</span>
-              <select id="c-method">${meta.methods.map((m) => `<option value="${m.id}" ${m.id === form.method ? 'selected' : ''}>${h(m.label)}</option>`).join('')}</select>
+              <select id="c-method">${(() => {
+                const groups = new Map();
+                for (const m of meta.methods) {
+                  const g = m.group || '梅花易数';
+                  if (!groups.has(g)) groups.set(g, []);
+                  groups.get(g).push(m);
+                }
+                return [...groups.entries()].map(([g, list]) => `<optgroup label="${attr(g)}">${list.map((m) => `<option value="${m.id}" ${m.id === form.method ? 'selected' : ''}>${h(m.label)}</option>`).join('')}</optgroup>`).join('');
+              })()}</select>
               <div class="hint" id="c-hint">${h(meta.methods[0].hint)}</div>
             </label>
 
@@ -475,6 +506,24 @@ export const castDesk = {
                 <input type="text" id="c-numbers" value="${attr(form.numbers)}" placeholder="如 82；两数起卦写 617 15">
                 <div class="hint">这个数得你自己报——预填或替你猜一个数，卦就算在别人身上了。</div>
                 <div class="hint">一数＋时辰：上卦取数除八，下卦取时辰数除八，动爻取二者之和除六。</div>
+              </label>
+            </div>
+
+            <div id="g-xlr-num" style="display:none">
+              <label class="fld"><span>报数（一至三数，空格分隔）</span>
+                <input type="text" id="c-xlr-numbers" placeholder="如 3 5 2；只报一个数也成">
+                <div class="hint">自大安起顺数：每落一宫，下一数即从该宫续数；三数最全，末宫为主断。</div>
+                <div class="hint">这几个数同样得你自己报——替你猜数，课就算在别人身上了。</div>
+              </label>
+            </div>
+
+            <div id="g-xlr-cal" style="display:none">
+              <label class="fld"><span>月与日按何历起课</span>
+                <select id="c-xlr-cal">
+                  <option value="lunar" selected>农历（传统正法；闰月按本月计）</option>
+                  <option value="solar">公历（按月、日数字直接起课）</option>
+                </select>
+                <div class="hint">月宫 → 日宫 → 时宫 依次顺数；时辰沿用「时与地」里的真太阳时设定。太远的年份（1900 年前、2100 年后）算不了农历。</div>
               </label>
             </div>
 
@@ -551,29 +600,34 @@ export const castDesk = {
         const payload = collect();
         const { chart, reading } = await api.post('/api/cast', payload);
         current = { chart, reading, payload };
+        const isXlrChart = chart.kind === 'xlr';
+        const head = isXlrChart
+          ? `${h(chart.chainText)}　末宫 ${h(chart.result.name)}`
+          : `${h(chart.ben.fullName)}${h(chart.ben.symbol)}　动 ${h(chart.moving.yaoTitle)}`;
         prev.innerHTML = `
           <div class="card tight">
             <div class="chips" style="justify-content:space-between">
-              <span class="gold" style="letter-spacing:3px">${h(chart.ben.fullName)}${h(chart.ben.symbol)}　动 ${h(chart.moving.yaoTitle)}</span>
-              ${gradeTag(chart.score.grade)}
+              <span class="gold" style="letter-spacing:2px">${head}</span>
+              ${gradeTag(reading?.grade || chart.score?.grade)}
             </div>
             <div class="hr"></div>
-            ${hexRowHtml(chart)}
-            <div class="hr"></div>
-            ${liuyaoHtml(chart)}
-            ${tiyongHtml(chart)}
+            ${chartHtml(chart)}
+            ${isXlrChart ? xlrLunarHtml(chart) : ''}
             <div class="hr"></div>
             <ol class="cast-steps">${(chart.casting.steps || []).map((s) => `<li>${h(s)}</li>`).join('')}</ol>
             <div class="small dim">真太阳时 ${h(chart.calendar.trueSolarTime)}　${h(chart.calendar.trueHourZhi)}时（取数 ${chart.calendar.trueHourNumber}）　${h(chart.calendar.yearGanZhi)}年 ${h(chart.calendar.monthZhi)}月 ${h(chart.calendar.dayGanZhi)}日</div>
             <div class="chips" style="margin-top:14px">
-              <button class="btn primary" id="c-save">录 下 此 卦</button>
+              <button class="btn primary" id="c-save">录 下 此${isXlrChart ? '课' : '卦'}</button>
               <button class="btn ghost sm" id="c-copy">复制卦签</button>
             </div>
           </div>
-          <div style="margin-top:6px">${readingHtml(reading, { chart, score: false })}</div>`;
+          <div style="margin-top:6px">${readingHtml(reading, { chart, score: false, toneTitle: isXlrChart ? '断 课 定 调' : undefined })}</div>`;
         prev.querySelector('#c-save').addEventListener('click', save);
         prev.querySelector('#c-copy').addEventListener('click', async () => {
-          await navigator.clipboard.writeText(`${chart.ben.fullName}${chart.ben.symbol} 动${chart.moving.yaoTitle}｜${reading.signature}`);
+          const slip = isXlrChart
+            ? `${chart.chainText} 末宫${chart.result.name}｜${reading.signature}`
+            : `${chart.ben.fullName}${chart.ben.symbol} 动${chart.moving.yaoTitle}｜${reading.signature}`;
+          await navigator.clipboard.writeText(slip);
           toast('卦签已复制');
         });
       } catch (err) {
@@ -591,8 +645,12 @@ export const castDesk = {
      */
     function collect() {
       const method = document.getElementById('c-method').value;
+      const isXlr = method.startsWith('xlr');
       const raw = String(document.getElementById('c-numbers').value || '').trim();
       const nums = raw
+        .split(/[\s,，、/]+/).map((s) => Number(s)).filter((n) => Number.isFinite(n) && n > 0);
+      const xlrRaw = String(document.getElementById('c-xlr-numbers').value || '').trim();
+      const xlrNums = xlrRaw
         .split(/[\s,，、/]+/).map((s) => Number(s)).filter((n) => Number.isFinite(n) && n > 0);
       const placeSel = document.getElementById('c-place').value;
       const p = meta.places.find((x) => x.name === placeSel);
@@ -605,7 +663,10 @@ export const castDesk = {
       if (method === 'manual') {
         if (!hex) missing.push('本卦');
         if (!mposRaw) missing.push('动爻');
-      } else if (!nums.length) {
+      } else if (method === 'xlrNumbers') {
+        if (!xlrNums.length) missing.push('报数');
+        if (xlrNums.length > 3) missing.push('报数（最多三个，一至三数均可）');
+      } else if (!isXlr && !nums.length) {
         missing.push('报数');
       }
       if (lonRaw === '' || !Number.isFinite(Number(lonRaw))) missing.push('经度');
@@ -621,7 +682,8 @@ export const castDesk = {
 
       return {
         method,
-        numbers: nums,
+        numbers: isXlr ? xlrNums : nums,
+        calendarType: method === 'xlrTime' ? document.getElementById('c-xlr-cal').value : undefined,
         localTime: fromLocalInput(document.getElementById('c-time').value),
         placeName: placeSel === '__custom' ? '' : placeSel,
         longitude: Number(lonRaw),
@@ -642,6 +704,7 @@ export const castDesk = {
         mode: p.method === 'manual' ? 'hexagram' : 'cast',
         method: p.method,
         numbers: p.numbers,
+        calendarType: p.calendarType,
         localTime: p.localTime,
         placeName: p.placeName,
         longitude: p.longitude,
@@ -664,7 +727,10 @@ export const castDesk = {
       mount(root) {
         const syncGroups = () => {
           const m = root.querySelector('#c-method').value;
-          root.querySelector('#g-number').style.display = m === 'manual' || m === 'timeOnly' ? 'none' : '';
+          const isXlr = m.startsWith('xlr');
+          root.querySelector('#g-number').style.display = (m === 'manual' || m === 'timeOnly' || isXlr) ? 'none' : '';
+          root.querySelector('#g-xlr-num').style.display = m === 'xlrNumbers' ? '' : 'none';
+          root.querySelector('#g-xlr-cal').style.display = m === 'xlrTime' ? '' : 'none';
           root.querySelector('#g-hex').style.display = m === 'manual' ? '' : 'none';
           root.querySelector('#g-movefrom').style.display = m === 'numberAndTime' ? '' : 'none';
           const hint = meta.methods.find((x) => x.id === m)?.hint || '';
@@ -691,11 +757,32 @@ export const castDesk = {
         root.querySelector('#c-ask')?.addEventListener('click', () => {
           const ask = ctx.meta?.askAssistant;
           if (!ask) return;
-          const num = String(root.querySelector('#c-numbers').value || '').trim();
+          const method = root.querySelector('#c-method').value;
+          const isXlr = method.startsWith('xlr');
+          const num = String(root.querySelector(isXlr ? '#c-xlr-numbers' : '#c-numbers').value || '').trim();
           const q = String(root.querySelector('#c-question').value || '').trim();
           const when = root.querySelector('#c-time').value;
           const place = root.querySelector('#c-place').value;
           const cat = root.querySelector('#c-cats .chip.on')?.dataset.v || '';
+          if (isXlr) {
+            const calSel = root.querySelector('#c-xlr-cal').value;
+            ask([
+              '请替我完整起一卦小六壬并存进卦录。要求：',
+              `- 起课法：${method}（${method === 'xlrNumbers' ? '报数起课' : '月日时辰起课'}）`,
+              method === 'xlrNumbers'
+                ? (num ? `- 报数：${num}` : '- 报数：**我还没给，先问我要**（这几个数必须我来定，你不能替我编）')
+                : `- 月与日按：${calSel === 'lunar' ? '农历（闰月按本月计）' : '公历'}`,
+              `- 起课时间：${when || '（没填，用此刻并说明）'}`,
+              `- 地点：${place === '__custom' ? '自定义经度' : place}`,
+              cat ? `- 类别：${cat}` : '- 类别：你看所问替我判断',
+              q ? `- 所问：${q}` : '- 所问：**我还没写，先问我**',
+              '',
+              '其余的都你来：用 cast 或 save_record（method 传上面的起课法，**卦象必须由工具算出，不许自己编**），',
+              '替我写好标题、把所问补成一句可验证的话、给出三宫与末宫断辞，最后存下来并告诉我卦录 id。',
+              '注意：小六壬论课只用六宫、六神、三宫与末宫，不要搬用梅花易数的术语。',
+            ].join('\n'));
+            return;
+          }
           ask([
             '请替我完整起一卦并存进卦录。要求：',
             num ? `- 报数：${num}` : '- 报数：**我还没给，先问我要**（这个数必须我来定，你不能替我编）',
@@ -744,7 +831,8 @@ export const importDesk = {
           <span style="flex:1"></span>
           <button class="btn sm" id="i-ask" title="把这段交给助手，让它整理成卦条并逐条核对">✦ 让 助 手 来 录</button>
         </div>
-        <div class="hint" style="margin-top:8px">解析原则：宁可少认，不可错认。认不准的会标红，原文一律整段存录，复核后即可入库。</div>
+        <div class="hint" style="margin-top:8px">解析原则：宁可少认，不可错认。认不准的会标红，原文一律整段存录，复核后即可入库。<br>
+          注意：卦条 v1 只描述梅花易数；小六壬三宫之课请到「起卦台」起课（本页解析器不会把它当梅花卦认）。</div>
       </div>
 
       <div id="i-result"></div>
@@ -833,7 +921,9 @@ node tools/validate.mjs 我的卦条.txt                # 只校验这个文件
           <span class="tag ${tone}">识别度 ${conf}%</span>
           ${b.missing?.length ? `<span class="tag bad">缺：${h(b.missing.join('、'))}</span>` : ''}
           <span style="flex:1"></span>
-          <button class="btn primary sm" data-act="one" data-i="${i}">入 库</button>
+          ${b.unsupported
+            ? '<span class="tag bad">不予导入（请到起卦台）</span>'
+            : `<button class="btn primary sm" data-act="one" data-i="${i}">入 库</button>`}
         </div>
         <div class="fv">
           <div><label>起卦时间</label><input type="text" data-f="localTime" data-i="${i}" value="${attr(f.localTime || '')}" placeholder="2026-09-28 03:12"></div>
@@ -1838,6 +1928,30 @@ export const settingsView = {
       </div>`;
     }
 
+    /* ---------- 版本与更新 ---------- */
+    function updateHtml() {
+      const app = META_APP || {};
+      // 未设 = 默认开（老 config.json 里没有这个键时，行为与默认值一致）
+      const on = (ctx.meta?.config?.updateCheck ?? true) !== false;
+      return `<div class="card">
+        <div class="card-title">版 本 与 更 新
+          <span class="sp tag ${on ? 'good' : 'neutral'}">${on ? '启动时检测' : '已停用'}</span>
+        </div>
+        <div class="small dim" style="margin-bottom:8px">
+          当前版本 <b class="mono">v${h(app.version || '')}</b>。开启后，启动时会向 GitHub 的发行版接口问一次
+          「最新版是哪个」——这是本程序<b>唯一</b>的主动外呼：只发一个 GET，不带任何本机数据与密钥，
+          返回的版本号只用来在顶部挂一条提示。断网或访问失败就静默跳过，不影响任何功能。
+        </div>
+        <label class="fld"><span>更新检测</span>
+          <select id="s-update">
+            <option value="1" ${on ? 'selected' : ''}>开启（启动时问一次，失败静默）</option>
+            <option value="0" ${!on ? 'selected' : ''}>停用（程序完全不出网）</option>
+          </select>
+        </label>
+        <div class="small dim" id="s-update-out">首次打开某个版本时会弹一次「更新内容」，看过即记下，同一版不再打扰。</div>
+      </div>`;
+    }
+
     /* ---------- 文档入口 ---------- */
     function docsEntryHtml() {
       return `<div class="card">
@@ -1850,7 +1964,7 @@ export const settingsView = {
       </div>`;
     }
 
-    const fullHtml = () => permHtml() + modelHtml() + dataHtml() + docsEntryHtml();
+    const fullHtml = () => permHtml() + modelHtml() + dataHtml() + updateHtml() + docsEntryHtml();
 
     return {
       html: fullHtml(),
@@ -1901,6 +2015,26 @@ export const settingsView = {
         });
         root.querySelector('#s-changedir')?.addEventListener('click', () => d.chooseDataDir());
         root.querySelector('#s-opentrash')?.addEventListener('click', () => d.openBackups());
+
+        // 更新检测开关：改一下即存（一个布尔值，不值得再点一次「保存」）
+        root.querySelector('#s-update')?.addEventListener('change', async (e) => {
+          const wantOn = e.target.value === '1';
+          const box = root.querySelector('#s-update-out');
+          try {
+            await api.post('/api/config', { updateCheck: wantOn });
+            // 同步到 meta 上的那一份，免得下次进本页显示旧值（meta 是同一个对象，就地改）
+            if (ctx.meta?.config) ctx.meta.config.updateCheck = wantOn;
+            if (box) {
+              box.innerHTML = wantOn
+                ? '<span class="ok">已开启</span>　下次启动会问一次 GitHub，有新版本就在顶部提示。'
+                : '<span class="dim">已停用</span>　程序不再访问任何外部地址；下次启动也不会提示新版本。';
+            }
+            toast(wantOn ? '已开启更新检测' : '已停用更新检测');
+          } catch (err) {
+            e.target.value = wantOn ? '0' : '1';
+            if (box) box.innerHTML = `<span class="err">改不动：${h(err.message)}</span>`;
+          }
+        });
 
         // 页内跳转按钮：「打开文档」、模型卡上的「到助手页改模型设置」
         root.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => ctx.navigate(b.dataset.go)));

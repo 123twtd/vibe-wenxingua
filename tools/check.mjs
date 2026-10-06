@@ -125,15 +125,21 @@ let recDetail = [];
 for (const f of files) {
   try {
     const rec = JSON.parse(fs.readFileSync(path.join(recordsDir, f), 'utf8'));
-    if (!rec.chart?.ben?.fullName || !rec.reading?.tone?.length) {
+    const isXlr = rec.chart?.kind === 'xlr';
+    // 两种占法的「结构完整」各有各的定义：梅花要本卦，小六壬要三宫与末宫
+    const hasShape = isXlr
+      ? (rec.chart?.palaces?.length && rec.chart?.result?.name && rec.reading?.tone?.length)
+      : (rec.chart?.ben?.fullName && rec.reading?.tone?.length);
+    if (!hasShape) {
       recOk = false;
-      recDetail.push(`${f} 缺卦象或断语`);
+      recDetail.push(`${f} 缺${isXlr ? '三宫' : '卦象'}或断语`);
       continue;
     }
     const again = rc.recompute(rec);
-    const sameBen = again.chart.ben.fullName === rec.chart.ben.fullName;
-    const sameMove = again.chart.moving.position === rec.chart.moving.position;
-    if (!sameBen || !sameMove) {
+    const same = isXlr
+      ? again.chart.chainText === rec.chart.chainText && again.chart.result?.name === rec.chart.result?.name
+      : (again.chart.ben.fullName === rec.chart.ben.fullName && again.chart.moving.position === rec.chart.moving.position);
+    if (!same) {
       recOk = false;
       recDetail.push(`${f} 重算不一致`);
     }
@@ -142,6 +148,13 @@ for (const f of files) {
     if (/undefined|NaN/.test(md)) {
       recOk = false;
       recDetail.push(`${f} 导出含 undefined`);
+    }
+    if (isXlr) {
+      const slip = rd.toSlip(JSON.parse(JSON.stringify(rec)));
+      if (/undefined|NaN/.test(slip)) {
+        recOk = false;
+        recDetail.push(`${f} 卦签含 undefined`);
+      }
     }
   } catch (err) {
     recOk = false;
@@ -169,14 +182,21 @@ console.log('\n【六】走势聚合');
   const trend = await load('core/trend.mjs');
   const records = fs.readdirSync(recordsDir).filter((f) => f.endsWith('.json'))
     .map((f) => JSON.parse(fs.readFileSync(path.join(recordsDir, f), 'utf8')));
+  // 走势诸线是梅花的语义（体用／互变／旺衰）：小六壬记录不进图，
+  // 被排除的条数记在 skippedXlr——这里按「梅花条数」断言，并验说明文字在。
+  const meihua = records.filter((r) => r.chart?.kind !== 'xlr');
+  const xlrCount = records.length - meihua.length;
 
   const f = trend.buildTrend(records, { mode: 'fortune' });
-  check('吉凶模式：每个点一条时间序列', f.points === records.length && f.series.length >= 5,
+  check('吉凶模式：每个点一条时间序列', f.points === meihua.length && f.series.length >= 5 && f.skippedXlr === xlrCount,
     `${f.points} 点 / ${f.series.length} 条线：${f.series.map((s) => s.name).join('、')}`);
   check('吉凶诸线同量程，可直接叠看', f.scale === 'signed' && f.series.every((s) => s.scale === 'signed'),
     '量程 −100 ~ +100');
   check('所有取值都在量程内', f.series.every((s) => s.values.every((v) => v === null || (v >= -100 && v <= 100))));
-  check('时间点与卦录一一对应', f.xLabels.length === records.length && f.records.length === records.length);
+  check('时间点与卦录一一对应', f.xLabels.length === meihua.length && f.records.length === meihua.length);
+  check('小六壬卦录被排除在走势之外，且图上有说明',
+    xlrCount === 0 || f.notes.some((n) => n.includes('小六壬')),
+    xlrCount ? `排除 ${xlrCount} 条` : '本批无小六壬记录');
 
   const el = trend.buildTrend(records, { mode: 'element' });
   check('五行模式：五条占比线，量程 0~100', el.series.length === 5 && el.scale === 'percent',
@@ -197,7 +217,7 @@ console.log('\n【六】走势聚合');
   check('无数据时不崩，给出提示', empty.points === 0 && empty.notes.length > 0, empty.notes[0]);
 
   const sum = trend.trendSummary(records);
-  check('走势摘要可算', sum.count === records.length && typeof sum.delta === 'number',
+  check('走势摘要可算', sum.count === meihua.length && typeof sum.delta === 'number',
     `前三之一均值 ${sum.earliest} → 后三之一均值 ${sum.latest}（起落 ${sum.delta}）`);
 }
 
@@ -389,6 +409,7 @@ console.log('\n【八】Agent 工具与 MCP');
     verdict: vd, record: rc, render: rd, importer: await load('core/importer.mjs'),
     trend: await load('core/trend.mjs'), guaTiao: await load('core/guaTiao.mjs'),
     migrate: await load('core/migrate.mjs'),
+    lunar: await load('core/lunar.mjs'), xiaoliuren: await load('core/xiaoliuren.mjs'),
   };
   const tk = mk.createToolkit({ store: testStore, core: coreMods });
 
@@ -405,6 +426,21 @@ console.log('\n【八】Agent 工具与 MCP');
   check('工具 cast 能算出正确卦象', castOut.ok && castOut.result.卦录.本卦 === '泽火革䷰' && castOut.result.卦录.动爻.startsWith('九四'),
     `${castOut.result?.卦录?.本卦} ${castOut.result?.卦录?.动爻}`);
   check('工具 cast 返回完整七段断语', Object.keys(castOut.result.断语.定调).join('') === '主互变断宜忌应期');
+
+  const castXlrOut = await tk.call('cast', {
+    method: 'xlrNumbers', numbers: [3, 5, 2], localTime: '2026-10-06 12:30', longitude: 103.83, question: '测试',
+  });
+  check('工具 cast 支持小六壬：出三宫与末宫，且不带梅花术语',
+    castXlrOut.ok && castXlrOut.result.三宫?.length === 3 && castXlrOut.result.结果宫?.宫 === '留连'
+    && !/体用|生克|旺衰|本卦|互卦|变卦|动爻/.test(JSON.stringify(castXlrOut.result)),
+    (castXlrOut.result?.三宫 || []).map((p) => p.位阶 + p.宫).join('→'));
+  const savedXlr = await tk.call('save_record', {
+    method: 'xlrTime', calendarType: 'lunar', localTime: '2026-03-14 21:00', longitude: 103.83, question: '自检：小六壬用例',
+  });
+  const listXlr = await tk.call('list_records', { method: 'xlrTime' });
+  check('工具 save_record／list_records 支持小六壬（按起课法筛得出来）',
+    savedXlr.ok && listXlr.ok && listXlr.result.总数 === 1 && !!listXlr.result.卦录[0].三宫,
+    `${savedXlr.result?.已入库}　${listXlr.result?.卦录?.[0]?.三宫}`);
 
   const look = await tk.call('hexagram_lookup', { query: '改命' });
   check('工具 hexagram_lookup 能按爻辞反查', look.ok && look.result.卦名 === '泽火革', `改命 → ${look.result?.卦名}`);
@@ -671,18 +707,33 @@ console.log('\n【十一】应期与领域走势');
     y1.reason.slice(0, 56));
   check('应期标了出处是算出来的', y1.source === 'computed');
 
-  // 与断语同一套规矩：未得气时，量化的上限不得越过「得令之月」那一段
+  // 与断语同一套规矩：未得气时，量化的上限不得越过「得令之月」那一段。
+  // 两种占法的应期各算各的：梅花按体卦旺衰，小六壬按末宫神数——分开验。
+  const xlrMod2 = await load('core/xiaoliuren.mjs');
   const yangCases = [];
+  const xlrCases = [];
   for (const f of fs.readdirSync(recordsDir)) {
     if (!f.endsWith('.json')) continue;
     const rec = JSON.parse(fs.readFileSync(path.join(recordsDir, f), 'utf8'));
     const chart = div.cast(rec.cast);
+    if (chart.kind === 'xlr') {
+      const y = xlrMod2.computeXlrYingqi(chart, { from: rec.cast?.localTime });
+      const tone = rec.reading?.tone?.find((t) => t.key === 'yingqi');
+      xlrCases.push({ rec, chart, y, tone });
+      continue;
+    }
     const y = yq.computeYingqi(chart, { from: rec.cast?.localTime });
     const tone = rec.reading?.tone?.find((t) => t.key === 'yingqi');
     yangCases.push({ rec, chart, y, tone });
   }
   check('每条真实卦录都算得出应期', yangCases.every((c) => c.y && c.y.maxDays >= 1),
     yangCases.map((c) => `${c.chart.ben.name}:${c.y.maxDays}天`).join('　'));
+  check('小六壬应期按末宫神数给区间（与梅花各算各的）',
+    xlrCases.every((c) => c.y && c.y.minDays >= 1 && c.y.maxDays > c.y.minDays
+      && yq.computeYingqi(c.chart) === null),
+    xlrCases.length
+      ? xlrCases.map((c) => `${c.chart.result.name}:${c.y.minDays}–${c.y.maxDays}天`).join('　')
+      : '本批无小六壬记录');
 
   const notInSeason = yangCases.filter((c) => c.y && !c.y.inSeason && c.y.seasonAt);
   check('体未得气时给出「得令之月」锚点', notInSeason.length > 0,
@@ -993,6 +1044,146 @@ console.log('\n【十三】工具来源与联网守卫');
   check('确认了也不许抓本机', refused.ok === false && /内网|保留/.test(refused.error), refused.error);
   check('联网工具是只读级，不需要提权',
     withWeb.permissionMap().fetch_url === 'read');
+}
+
+/* ============================================================
+ * 十四、小六壬（另一种占法：三宫之课）
+ * ========================================================== */
+console.log('\n【十四】小六壬');
+{
+  const xlr = await load('core/xiaoliuren.mjs');
+  const lunarMod = await load('core/lunar.mjs');
+  const dv2 = await load('core/divination.mjs');
+  const rc2 = await load('core/record.mjs');
+  const rd2 = await load('core/render.mjs');
+  const gt2 = await load('core/guaTiao.mjs');
+  const schemaMod2 = await load('core/schema.mjs');
+  const recordSchema2 = JSON.parse(fs.readFileSync(path.join(ROOT, 'schema', 'record.schema.json'), 'utf8'));
+
+  check('起卦法一览含六项（梅花四 + 小六壬二），且分了组',
+    dv2.METHODS.length === 6
+    && dv2.METHODS.slice(0, 4).every((m) => m.group === '梅花易数')
+    && dv2.METHODS.slice(4).every((m) => m.group === '道教小六壬'),
+    dv2.METHODS.map((m) => m.id).join('、'));
+  check('判别只走 kindOf：两种占法各归其类',
+    dv2.kindOf('xlrNumbers') === 'xlr' && dv2.kindOf('xlrTime') === 'xlr'
+    && dv2.kindOf('numberAndTime') === 'meihua' && dv2.kindOf('manual') === 'meihua');
+
+  // 六宫表：名、六神、五行、方位、神数、口诀、吉凶缺一不可
+  check('六宫表完整（名／六神／五行／方位／神数／口诀／吉凶）',
+    xlr.XLR_PALACES.length === 6 && xlr.XLR_PALACES.every((p) => p.name && p.deity && p.element
+      && p.direction && p.spiritNumbers.length === 3 && p.koujue.length > 20 && p.grade?.label),
+    xlr.XLR_PALACES.map((p) => p.name).join('、'));
+  check('吉凶映射合传统（小吉大吉、大安速喜吉、留连小凶、赤口空亡凶）',
+    xlr.XLR_PALACES.find((p) => p.name === '小吉').grade.key === 'daji'
+    && xlr.XLR_PALACES.find((p) => p.name === '大安').grade.key === 'ji'
+    && xlr.XLR_PALACES.find((p) => p.name === '速喜').grade.key === 'ji'
+    && xlr.XLR_PALACES.find((p) => p.name === '留连').grade.key === 'xiaoxiong'
+    && xlr.XLR_PALACES.find((p) => p.name === '赤口').grade.key === 'xiong'
+    && xlr.XLR_PALACES.find((p) => p.name === '空亡').grade.key === 'xiong');
+
+  // 手算算例：顺数规则「每落一宫，下一数自该宫续数，该宫记作一」
+  const castX = (cast) => dv2.cast({ longitude: 113, useTrueSolarTime: false, ...cast });
+  const c1 = castX({ method: 'xlrNumbers', numbers: [3, 5, 2], localTime: '2026-10-06 12:30' });
+  check('报数三数 3·5·2 → 末宫留连（小凶）',
+    c1.chainText === '速喜 → 大安 → 留连' && c1.result.name === '留连' && c1.result.grade.key === 'xiaoxiong',
+    c1.chainText);
+  const c2 = castX({ method: 'xlrTime', calendarType: 'lunar', localTime: '2026-10-06 12:30' });
+  check('农历月日时起课：月宫／日宫／时宫，末位为结果宫',
+    c2.palaces.length === 3 && c2.palaces.map((p) => p.role).join('') === '月宫日宫时宫'
+    && c2.result.role === '时宫' && c2.lunar?.monthName && c2.lunar?.dayName,
+    `农历${c2.lunar?.monthName}${c2.lunar?.dayName}　${c2.chainText}`);
+  check('农历取数与农历推算同源（闰月按本月计）',
+    c2.casting.counts[0] === c2.lunar.castingMonth && c2.casting.counts[1] === c2.lunar.day
+    && c2.casting.counts[2] === c2.calendar.clockHourNumber,
+    `取数 ${c2.casting.counts.join('／')}`);
+  const c3 = castX({ method: 'xlrTime', calendarType: 'solar', localTime: '2025-04-02 12:00' });
+  check('公历月日时起课：4 月 2 日午时 → 末宫小吉', c3.result.name === '小吉', c3.chainText);
+  const c4 = castX({ method: 'xlrNumbers', numbers: [7], localTime: '2026-10-06 12:30' });
+  const c5 = castX({ method: 'xlrNumbers', numbers: [6], localTime: '2026-10-06 12:30' });
+  check('单数报数：7 → 大安、6 → 空亡；一数只显末宫',
+    c4.result.name === '大安' && c5.result.name === '空亡'
+    && c4.palaces.length === 1 && c4.palaces[0].role === '末宫');
+
+  // 农历锚点（与万年历对拍）
+  const springFestivals = ['2000-02-05', '2023-01-22', '2024-02-10', '2025-01-29', '2026-02-17', '2027-02-06', '2030-02-03'];
+  check('春节（正月初一）对得上万年历',
+    springFestivals.every((d) => {
+      const out = lunarMod.lunarFromSolar({ year: Number(d.slice(0, 4)), month: Number(d.slice(5, 7)), day: Number(d.slice(8, 10)) });
+      return out.month === 1 && out.day === 1 && !out.isLeap;
+    }), springFestivals.join('、'));
+  check('闰月岁次对得上（2020 闰四、2023 闰二、2025 闰六）',
+    lunarMod.lunarFromSolar({ year: 2020, month: 6, day: 1 }).suiLeapMonth === 4
+    && lunarMod.lunarFromSolar({ year: 2023, month: 6, day: 1 }).suiLeapMonth === 2
+    && lunarMod.lunarFromSolar({ year: 2025, month: 8, day: 1 }).suiLeapMonth === 6);
+  check('闰月起课按本月计，并在起课推演里写明',
+    (() => {
+      const c = castX({ method: 'xlrTime', calendarType: 'lunar', localTime: '2023-03-22 12:00' });
+      return c.lunar.isLeap && c.lunar.month === 2 && c.casting.counts[0] === 2
+        && c.casting.steps.some((s) => s.includes('闰月'));
+    })());
+  check('农历适用范围外明确报错（不静默算错）',
+    (() => { try { lunarMod.lunarFromSolar({ year: 1899, month: 12, day: 31 }); return false; } catch { return true; } })()
+    && (() => { try { lunarMod.lunarFromSolar({ year: 2101, month: 1, day: 1 }); return false; } catch { return true; } })());
+
+  // 记录与断课
+  const rec1 = rc2.buildRecord({
+    id: '202610061230-01',
+    cast: { method: 'xlrNumbers', numbers: [3, 5, 2], localTime: '2026-10-06 12:30', longitude: 113, useTrueSolarTime: false },
+    origin: { kind: 'sample', label: '自检' },
+  });
+  check('断课七段：初宫·次宫·末宫·断·宜·忌·应期',
+    rec1.reading.tone.map((t) => t.label).join('') === '初宫次宫末宫断宜忌应期',
+    rec1.reading.tone.map((t) => t.label).join(''));
+  check('术语隔离：断课全文不出现梅花的说法',
+    !/体用|生克|旺衰|本卦|互卦|变卦|动爻/.test(JSON.stringify(rec1.reading)),
+    '未出现 体用／生克／旺衰／本卦／互卦／变卦／动爻');
+  check('记录升到 v4 且过 schema（oneOf 小六壬分支）',
+    rec1.schema === 4 && schemaMod2.validate(rec1, recordSchema2, { strict: true }).valid);
+  check('应期按末宫神数（留连二·八·十 → 2–10 天）',
+    rec1.yingqi && rec1.yingqi.minDays === 2 && rec1.yingqi.maxDays === 10 && rec1.yingqi.source === 'computed',
+    `${rec1.yingqi?.minDays}–${rec1.yingqi?.maxDays} 天`);
+  check('小六壬无校勘、无总分、无体用（不污染梅花口径）',
+    rec1.corrections.length === 0 && rec1.chart.score === undefined && rec1.chart.tiyong === undefined);
+  const sum1 = rc2.summarize(rec1);
+  check('摘要带方法标识与三宫（列表徽章与筛选只认它）',
+    sum1.kind === 'xlr' && sum1.method === 'xlrNumbers' && sum1.chainText === '速喜 → 大安 → 留连'
+    && sum1.result?.name === '留连' && sum1.ben === null);
+  check('默认标题体现末宫（留连之课）', rec1.title === '留连之课', rec1.title);
+  const again1 = rc2.recompute(rec1);
+  check('重算三宫与断课不变',
+    again1.chart.chainText === rec1.chart.chainText
+    && again1.reading.tone.map((t) => t.label).join('') === '初宫次宫末宫断宜忌应期');
+
+  // 导出：三宫版式，不出梅花区块
+  const md2 = rd2.toMarkdown(JSON.parse(JSON.stringify(rec1)));
+  const slip2 = rd2.toSlip(JSON.parse(JSON.stringify(rec1)));
+  check('小六壬导出走三宫版式（不出梅花区块、无 undefined）',
+    md2.includes('三宫') && md2.includes('留连') && !/undefined|NaN/.test(md2)
+    && !md2.includes('体 用') && !md2.includes('六爻'));
+  check('小六壬卦签含三宫与末宫', slip2.includes('三宫') && slip2.includes('末宫') && !/undefined|NaN/.test(slip2));
+  check('方法名有中文标签', rd2.methodLabel('xlrNumbers').includes('小六壬'), rd2.methodLabel('xlrNumbers'));
+  check('总览导出两种占法并列（方法列 + 三宫列）',
+    rd2.toIndexMarkdown([rec1]).includes('小六壬') && rd2.toIndexMarkdown([rec1]).includes('速喜 → 大安 → 留连'));
+
+  // 卦条：拒收小六壬、导出不产可再导入的梅花卦条
+  const gtXlr = gt2.parseGuaTiao('# 卦条 v1\n时: 2026-10-06 12:30\n法: 小六壬报数\n数: 3\n');
+  check('卦条拒收小六壬，并说明去哪里起课',
+    gtXlr.ok === false && gtXlr.unsupported === 'xlr' && gtXlr.warnings[0].includes('起卦台'),
+    gtXlr.warnings[0]);
+  const notice = gt2.toGuaTiao(rec1);
+  check('小六壬导出卦条不产可再导入的梅花卦条',
+    !/^时:/m.test(notice) && gt2.parseGuaTiao(notice).ok === false);
+
+  // schema 负例
+  const badXlr = JSON.parse(JSON.stringify(rec1));
+  delete badXlr.chart.result;
+  check('schema 抓得出小六壬缺结果宫',
+    schemaMod2.validate(badXlr, recordSchema2, { strict: true }).valid === false);
+  const badXlr2 = JSON.parse(JSON.stringify(rec1));
+  badXlr2.chart.palaces = [...badXlr2.chart.palaces, badXlr2.chart.palaces[0]];
+  check('schema 抓得出三宫超过三项',
+    schemaMod2.validate(badXlr2, recordSchema2, { strict: true }).valid === false);
 }
 
 /* 空库模拟时用的临时夹具目录：读完了就清掉，不留痕迹 */

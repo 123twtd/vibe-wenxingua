@@ -260,7 +260,7 @@ export function createToolkit({ store, core, plugins = null, permission = DEFAUL
               qa: b.qa || '',
               claimed: b.claimed,
               tags: b.tags,
-              review: { status: b.review.status || '待应验', result: b.review.result || '', reviewedAt: null, log: [] },
+              review: { status: b.review?.status || '待应验', log: Array.isArray(b.review?.log) ? b.review.log : [] },
               origin: { kind: 'gua-tiao', label: '卦条导入' },
             };
             const rec = useHex
@@ -378,29 +378,24 @@ export function createToolkit({ store, core, plugins = null, permission = DEFAUL
     {
       name: 'update_review',
       title: '写复盘',
-      description: '给一条卦录写复盘：状态、实况、追记。这是长期用下去最要紧的一步——卦准不准，全靠事后回看。',
+      description: '给一条卦录写复盘：改状态、追加一条复盘条目（最早那条通常是首回复盘，之后是追记）。这是长期用下去最要紧的一步——卦准不准，全靠事后回看。',
       parameters: S({
         type: 'object',
         properties: {
           id: { type: 'string' },
           status: { type: 'string', enum: ['待应验', '应验中', '已应验', '未应验', '已过期', '无需应验'] },
-          result: { type: 'string', description: '实际发生了什么、卦在何处应了、何处没应。' },
-          logText: { type: 'string', description: '追加一条追记。' },
-          logAt: { type: 'string', description: '追记时间，如 2026-12-20。' },
+          text: { type: 'string', description: '新写一条复盘／追记的正文：实际发生了什么、卦在何处应了、何处没应。' },
+          at: { type: 'string', description: '这一条的日期，如 2026-12-20；不写就用今天。' },
         },
         required: ['id'],
       }),
       async handler(a) {
         const r = store.get(a.id);
         if (!r) throw new Error(`未找到卦录 ${a.id}`);
-        const review = { ...(r.review || {}) };
+        const review = { status: r.review?.status || '待应验', log: [...(r.review?.log || [])] };
         if (a.status) review.status = a.status;
-        if (a.result !== undefined) review.result = a.result;
-        if (a.status && ['已应验', '未应验', '已过期', '无需应验'].includes(a.status) && !review.reviewedAt) {
-          review.reviewedAt = a.logAt || new Date().toISOString().slice(0, 10);
-        }
-        if (a.logText) {
-          review.log = [...(review.log || []), { at: a.logAt || new Date().toISOString().slice(0, 10), text: a.logText }];
+        if (a.text) {
+          review.log.push({ at: a.at || new Date().toISOString().slice(0, 10), text: String(a.text) });
         }
         store.save(core.record.normalizeRecord({ ...r, review }));
         return { id: r.id, 复盘: review };

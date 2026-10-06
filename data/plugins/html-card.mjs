@@ -62,10 +62,9 @@ function buildXlrHtml(rec) {
       <p class="lbl">为什么这样说</p><ul>${r.plain.why.map((w) => `<li>${ESC(w)}</li>`).join('')}</ul>
       <p class="lbl">怎么做</p><ul>${r.plain.how.map((w) => `<li>${ESC(w)}</li>`).join('')}</ul>
     </section>` : '';
-  const review = (rec.review?.result || rec.review?.log?.length) ? `
+  const review = (rec.review?.log?.length) ? `
     <section><h2>复 盘</h2>
-      <p>状态：<b>${ESC(rec.review.status)}</b>${rec.review.reviewedAt ? `　复盘于 ${ESC(rec.review.reviewedAt)}` : ''}</p>
-      ${rec.review.result ? `<p>${ESC(rec.review.result)}</p>` : ''}
+      <p>状态：<b>${ESC(rec.review.status)}</b></p>
       ${(rec.review.log || []).map((e) => `<blockquote>${ESC(e.text)}<cite>${ESC(e.at || '')}</cite></blockquote>`).join('')}
     </section>` : '';
   const palaces = (c.palaces || []).map((p, i, arr) => `<div class="pal${i === arr.length - 1 ? ' last' : ''}">
@@ -180,10 +179,9 @@ function buildHtml(rec, core) {
       ${rec.corrections.map((x) => `<blockquote class="fix">${ESC(x.label)}：原述「${ESC(x.stated)}」→ 正法「${ESC(x.computed)}」<cite>${ESC(x.note)}</cite></blockquote>`).join('')}
     </section>` : '';
 
-  const review = (rec.review?.result || rec.review?.log?.length) ? `
+  const review = (rec.review?.log?.length) ? `
     <section><h2>复 盘</h2>
-      <p>状态：<b>${ESC(rec.review.status)}</b>${rec.review.reviewedAt ? `　复盘于 ${ESC(rec.review.reviewedAt)}` : ''}</p>
-      ${rec.review.result ? `<p>${ESC(rec.review.result)}</p>` : ''}
+      <p>状态：<b>${ESC(rec.review.status)}</b></p>
       ${(rec.review.log || []).map((e) => `<blockquote>${ESC(e.text)}<cite>${ESC(e.at || '')}</cite></blockquote>`).join('')}
     </section>` : '';
 

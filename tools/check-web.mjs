@@ -249,6 +249,9 @@ const ROUTES = [
   ['#/plugin/review-watch/due', '插件页·应期提醒', ['应期', '回 插 件 列 表']],
   ['#/plugin/stats-plus/trend', '插件页·卦气统计', ['体 卦 五 行', '卦 气 走 势']],
   ['#/settings', '设置', ['助 手 权 限', '只读', '可写', '可删', '全权', '文 档', '数 据', '版 本 与 更 新']],
+  // 复盘页：左边清单、右边面板；没选中时给一句「左边挑一条」
+  ['#/review', '复盘·清单', ['复 盘', '未了结', '全部', '左边挑一条，右边写复盘']],
+  ...(detailId ? [[`#/review/${detailId}`, '复盘·选中一条', ['开 启 操 作', '写 一 条', '看 全 卦']]] : []),
   ['#/docs', '文档', ['文 档', '上手', '设计', 'doc-item']],
   // 桌面菜单的「帮助」把人送到 #/docs/<id>，在这儿内嵌阅读。
   // 正文是 mount 里异步取的，而本套的 DOM 是个 Proxy 桩、照不出 mount 的改动，
@@ -292,6 +295,64 @@ if (xlrItem) {
   check('小六壬详情页不渲染梅花区块（六爻／体用／古辞／权衡）',
     html.includes('三 宫') && !leaked.length,
     leaked.length ? `混入：${leaked.join('、')}` : `HTML ${html.length} 字`);
+}
+
+/* 复盘页（从详情页搬出来的一页）的两条硬约定与写盘往返：
+   ① 默认只读——条目上看不到「改／删」，只有「开启操作」；
+   ② 开启操作后每条才出现「改／删」；
+   ③ 条目真的能写进卦录（接口读回来一致），验完**还原**，不在数据里留痕。 */
+if (detailId) {
+  const vw = await import(new URL('../web/views.js', import.meta.url).href);
+  const origReview = JSON.parse(JSON.stringify(detailJson?.record?.review || { status: '待应验', log: [] }));
+  const seeded = { status: origReview.status || '待应验', log: [...(origReview.log || [])] };
+  const seededByTest = seeded.log.length === 0;
+  const patchReview = (review) => fetch(`${BASE}/api/records/${encodeURIComponent(detailId)}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ review }),
+  });
+  if (seededByTest) {
+    seeded.log.push({ at: '2026-10-07', text: '自检：这一条由 check-web 临时补上' });
+    await patchReview(seeded);
+  }
+
+  globalThis.location.hash = `#/record/${detailId}`;
+  await qxg.render();
+  const detailR = String(qxg.state.lastHtml || '');
+  check('详情页不再内嵌复盘表单——只在页头留一个「复 盘 · 状态」入口',
+    detailR.includes('复 盘 · ') && !detailR.includes('rv-result') && !detailR.includes('存 复 盘')
+    && !detailR.includes('添 一 条 追 记'));
+
+  globalThis.location.hash = `#/review/${detailId}`;
+  await qxg.render();
+  const rvRead = String(qxg.state.lastHtml || '');
+  check('复盘页：默认只读——条目上看不到「改／删」，只有「开启操作」',
+    rvRead.includes('开 启 操 作') && !rvRead.includes('data-rv="edit"') && !rvRead.includes('data-rv="del"')
+    && rvRead.includes('写 一 条'),
+    `这条现有条目 ${seeded.log.length} 条`);
+
+  vw.reviewDesk.state.ops = true;
+  await qxg.render();
+  const rvOps = String(qxg.state.lastHtml || '');
+  check('复盘页：开启操作后，每条才出现「改／删」',
+    rvOps.includes('关 闭 操 作') && rvOps.includes('data-rv="edit"') && rvOps.includes('data-rv="del"'));
+  vw.reviewDesk.state.ops = false;
+  await qxg.render();
+  check('复盘页：关掉操作即回到只读',
+    !String(qxg.state.lastHtml || '').includes('data-rv="del"'));
+
+  const back = await (await fetch(`${BASE}/api/records/${encodeURIComponent(detailId)}`)).json();
+  check('复盘页：条目写进了卦录（接口读回来一致）',
+    (back.record?.review?.log || []).length === seeded.log.length,
+    `log ${(back.record?.review?.log || []).length} 条`);
+
+  if (seededByTest) {
+    await patchReview(origReview);
+    const restored = await (await fetch(`${BASE}/api/records/${encodeURIComponent(detailId)}`)).json();
+    check('复盘页：自检跑完把复盘还原，不留测试条目',
+      JSON.stringify(restored.record?.review?.log || []) === JSON.stringify(origReview.log || []),
+      `log ${(restored.record?.review?.log || []).length} 条`);
+  }
+  globalThis.location.hash = '#/records';
+  await qxg.render();
 }
 
 console.log('\n【一·B】起卦台：不许替用户预填');

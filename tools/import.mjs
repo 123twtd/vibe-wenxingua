@@ -98,8 +98,12 @@ function commitBlock(b, originLabel) {
       },
     });
   if (b.signature) rec.reading.signature = b.signature;
-  if (b.review?.status && b.review.status !== '待应验') {
-    rec.review = { ...rec.review, status: b.review.status, result: b.review.result || '' };
+  if (b.review && (b.review.status !== '待应验' || b.review.log?.length)) {
+    // 复盘在 v5 之后是「状态 + 条目流」：卦条里写了什么就接在已有条目后面
+    rec.review = {
+      status: b.review.status || rec.review.status,
+      log: [...(rec.review.log || []), ...(Array.isArray(b.review.log) ? b.review.log : [])],
+    };
   }
   if (!dry) store.save(rec);
   return rec;

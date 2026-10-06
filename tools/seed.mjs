@@ -280,7 +280,7 @@ for (const s of SEEDS) {
     tags: s.tags,
     origin: s.origin,
     narrative: narrativeOf(pairs, s.pairs, s.pairLabels),
-    review: { status: '待应验', result: '', reviewedAt: null, log: [] },
+    review: { status: '待应验', log: [] },
   });
   if (s.extraCorrections) rec.corrections = [...(rec.corrections || []), ...s.extraCorrections];
   fs.writeFileSync(file, JSON.stringify(rec, null, 2), 'utf8');

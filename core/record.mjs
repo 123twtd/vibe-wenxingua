@@ -15,8 +15,11 @@ import { library, sixLines } from './hexagram.mjs';
 import { calendarInfo } from './calendar.mjs';
 import { computeYingqi } from './yingqi.mjs';
 import { computeXlrYingqi, isXlrChart, isXlrMethod, XLR_PALACE_NAMES } from './xiaoliuren.mjs';
+// 结构版本号只有一处真源：core/migrate.mjs 的 CURRENT_SCHEMA。
+// （这里原先自己写了一个 4，与 migrate 各记一份——升版时两处漂移是迟早的事）
+import { CURRENT_SCHEMA } from './migrate.mjs';
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = CURRENT_SCHEMA;
 
 export const REVIEW_STATUS = ['待应验', '应验中', '已应验', '未应验', '已过期', '无需应验'];
 
@@ -161,7 +164,7 @@ export function buildRecord(p) {
     origin: p.origin || { kind: 'cast', label: '本机起卦' },
     claimed: p.claimed || null,
     corrections: audit(p.claimed, chart),
-    review: p.review || { status: '待应验', result: '', reviewedAt: null, log: [] },
+    review: p.review || { status: '待应验', log: [] },
     tags: p.tags || [],
     source: p.source || null,
   });
@@ -258,11 +261,14 @@ export function normalizeRecord(raw) {
     origin: raw.origin || { kind: 'cast', label: '本机起卦' },
     claimed: raw.claimed || null,
     corrections: Array.isArray(raw.corrections) ? raw.corrections : [],
+    // 复盘：只有一个「状态」和一个**条目流**。最早那条通常就是最初写的复盘，
+    // 之后每加一条追记都追加在后面——时间线是只读的叙事，不是一篇会被覆盖的作文。
+    // （v5 之前是 result／reviewedAt 两个字段 + log，见 core/migrate.mjs 的 4→5 迁移）
     review: {
       status: REVIEW_STATUS.includes(raw.review?.status) ? raw.review.status : '待应验',
-      result: raw.review?.result || '',
-      reviewedAt: raw.review?.reviewedAt || null,
-      log: Array.isArray(raw.review?.log) ? raw.review.log : [],
+      log: (Array.isArray(raw.review?.log) ? raw.review.log : [])
+        .filter((e) => e && typeof e === 'object')
+        .map((e) => ({ at: String(e.at ?? ''), text: String(e.text ?? '') })),
     },
     tags: Array.isArray(raw.tags) ? raw.tags : [],
     source: raw.source || null,

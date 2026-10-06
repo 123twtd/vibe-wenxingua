@@ -15,7 +15,7 @@
 
 import { computeYingqi } from './yingqi.mjs';
 
-export const CURRENT_SCHEMA = 4;
+export const CURRENT_SCHEMA = 5;
 
 /**
  * 迁移登记表：键是**源版本**，值把该版本的记录转成下一版本。
@@ -24,7 +24,7 @@ export const MIGRATIONS = {
   // 0 表示「早于版本号机制的裸记录」，视同 v1
   0: (rec) => {
     rec.schema = 1;
-    rec.review = rec.review || { status: '待应验', result: '', reviewedAt: null, log: [] };
+    rec.review = rec.review || { status: '待应验', log: [] };
     rec.tags = Array.isArray(rec.tags) ? rec.tags : [];
     rec.corrections = Array.isArray(rec.corrections) ? rec.corrections : [];
     return rec;
@@ -84,6 +84,43 @@ export const MIGRATIONS = {
    * `chart.kind`，**缺省即梅花**——所以这一版对旧记录是**纯空操作**，不碰任何已有字段。
    */
   3: (rec) => rec,
+
+  /**
+   * v4 → v5：复盘**条目化**——`review` 从「status + result + reviewedAt + log」收敛成
+   * 「status + log[]（条目流）」。
+   *
+   * 为什么：result／reviewedAt 与 log 是同一个东西的两种说法（实况＝最初那条复盘，
+   * 复盘时间＝那条的日期），并存就有两个真源——界面上表现为「保存的实况」不像追记那样
+   * 能回看、能改、能删；数据上也说不清「第一条到底是哪个」。收敛之后：
+   * 一条条复盘就是一条条目，全部可改可删，导出与助手工具也只看这一个流。
+   *
+   * 怎么搬：`result` 非空 → 变成 `log` 的**第一条**，`at` 取原 `reviewedAt`；
+   * 原来没记复盘时间就**留空串**（界面显示「未记时间」）——不替用户猜一个日期出来，
+   * 这与「认不准就报缺、不许猜」是同一条规矩。原 `log` 原样接在后面，顺序不变。
+   * 文字一字不丢、不重排。
+   */
+  4: (rec) => {
+    const rv = rec.review;
+    if (!rv || typeof rv !== 'object') {
+      rec.review = { status: '待应验', log: [] };
+      return rec;
+    }
+    const log = Array.isArray(rv.log) ? rv.log : [];
+    const result = typeof rv.result === 'string' ? rv.result.trim() : '';
+    const head = result
+      ? [{ at: typeof rv.reviewedAt === 'string' ? rv.reviewedAt : '', text: result }]
+      : [];
+    rec.review = {
+      status: rv.status,
+      log: [
+        ...head,
+        ...log
+          .filter((e) => e && typeof e === 'object')
+          .map((e) => ({ at: String(e.at ?? ''), text: String(e.text ?? '') })),
+      ],
+    };
+    return rec;
+  },
 };
 
 /** 这条记录是不是 v1 升上来的、还没补应期 */

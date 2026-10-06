@@ -53,7 +53,18 @@
           "type": "string",
           "enum": ["待应验", "应验中", "已应验", "未应验", "已过期", "无需应验", ""]
         },
-        "result": { "type": "string" }
+        "log": {
+          "type": "array",
+          "description": "复盘条目流：卦条里写「复盘条目: |」块，一行一条；行首可写日期。",
+          "items": {
+            "type": "object",
+            "properties": {
+              "at": { "type": "string" },
+              "text": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
       },
       "additionalProperties": false
     },

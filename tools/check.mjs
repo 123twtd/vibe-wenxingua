@@ -232,7 +232,12 @@ console.log('\n【七】格式规范、schema 与迁移');
   check('两份 schema 都是合法 JSON 且有 $id', !!recSchema.$id && !!gtSchema.$id);
 
   const recs = fs.readdirSync(recordsDir).filter((f) => f.endsWith('.json'))
-    .map((f) => ({ f, rec: JSON.parse(fs.readFileSync(path.join(recordsDir, f), 'utf8')) }));
+    .map((f) => {
+      const raw = JSON.parse(fs.readFileSync(path.join(recordsDir, f), 'utf8'));
+      // 盘上的记录可能是旧结构：应用载入时会先迁移，所以这里也**先迁移再校验**，
+      // 否则「schema 升版」当天这条必然报红，而实际数据是好的。
+      return { f, rec: mg.migrate(raw).record };
+    });
   const schemaFails = recs.filter((x) => !schemaMod.validate(x.rec, recSchema, { strict: true }).valid);
   check('全部卦录通过 record schema', schemaFails.length === 0,
     schemaFails.map((x) => x.f).join('、') || `${recs.length} 条`);
@@ -311,6 +316,46 @@ console.log('\n【七】格式规范、schema 与迁移');
     check('v2 → v3 只新增补充存录四字段，不动其余',
       pick(sample) === pick(out) && ['background', 'plan', 'collation', 'qa'].every((k) => out[k] === ''),
       '四字段留空');
+  }
+
+  // v4 → v5：复盘条目化（result／reviewedAt → 首条条目）。文字一字不丢、不重排、不猜日期。
+  {
+    const sample = {
+      schema: 4, id: 'x',
+      review: {
+        status: '已应验', result: '初试过了，复试待定。', reviewedAt: '2026-12-20',
+        log: [{ at: '2026-12-25', text: '复试名单出来了。' }],
+      },
+    };
+    const out = mg.MIGRATIONS[4](JSON.parse(JSON.stringify(sample)));
+    check('v4 → v5 复盘条目化：result 搬成首条条目，原追记顺序不变',
+      out.review.status === '已应验' && out.review.log.length === 2
+      && out.review.log[0].text === '初试过了，复试待定。' && out.review.log[0].at === '2026-12-20'
+      && out.review.log[1].text === '复试名单出来了。'
+      && out.review.result === undefined && out.review.reviewedAt === undefined,
+      JSON.stringify(out.review));
+    const out2 = mg.MIGRATIONS[4]({ schema: 4, review: { status: '待应验', result: '只有实况', reviewedAt: null, log: [] } });
+    check('v4 → v5：没记复盘时间就留空串，不替用户猜一个日期',
+      out2.review.log.length === 1 && out2.review.log[0].at === '', JSON.stringify(out2.review.log[0]));
+    const out3 = mg.MIGRATIONS[4]({
+      schema: 4, review: { status: '待应验', result: '', reviewedAt: null, log: [{ at: '2026-11-01', text: '追记一条' }] },
+    });
+    check('v4 → v5：空实况不凭空造条目，原追记原样保留',
+      out3.review.log.length === 1 && out3.review.log[0].text === '追记一条', JSON.stringify(out3.review));
+  }
+
+  // 卦条：复盘条目块（v5）与旧键「实况」的兼容
+  {
+    const txt = ['# 卦条 v1', '时: 2026-10-05 05:20', '法: 已知卦象', '本卦: 泽水困', '动: 4',
+      '复盘条目: |', '  2026-12-20 初试过了', '  复试待定'].join('\n');
+    const p = gt.parseGuaTiao(txt);
+    check('卦条「复盘条目」块：一行一条，行首的日期认得出来',
+      p.review.log.length === 2 && p.review.log[0].at === '2026-12-20' && p.review.log[0].text === '初试过了'
+      && p.review.log[1].at === '' && p.review.log[1].text === '复试待定', JSON.stringify(p.review.log));
+    const p2 = gt.parseGuaTiao('# 卦条 v1\n时: 2026-10-05 05:20\n法: 已知卦象\n本卦: 泽水困\n动: 4\n实况: 旧文件里的一句话\n');
+    check('卦条旧键「实况」仍认，且不猜日期（老归档不能白写）',
+      p2.review.log.length === 1 && p2.review.log[0].text === '旧文件里的一句话' && p2.review.log[0].at === '',
+      JSON.stringify(p2.review.log));
   }
 
   // 卦条：补充存录四个多行块
@@ -462,9 +507,11 @@ console.log('\n【八】Agent 工具与 MCP');
   check('入库的卦录结构合法', !!inRec && (await load('core/schema.mjs')).validate(inRec, JSON.parse(fs.readFileSync(path.join(ROOT, 'schema', 'record.schema.json'), 'utf8')), { strict: true }).valid);
   check('入库的卦录来源标注为卦条', inRec?.origin?.kind === 'gua-tiao', inRec?.origin?.label);
 
-  const revised = await tk.call('update_review', { id: inRec.id, status: '已应验', result: '自检：确实应了。', logText: '自检追记', logAt: '2026-10-20' });
-  check('工具 update_review 能写复盘', revised.ok && revised.result.复盘.status === '已应验' && revised.result.复盘.log.length === 1,
-    `${revised.result?.复盘?.status}　${revised.result?.复盘?.reviewedAt}`);
+  const revised = await tk.call('update_review', { id: inRec.id, status: '已应验', text: '自检：确实应了。', at: '2026-10-20' });
+  check('工具 update_review 能写复盘（改状态 + 追加一条条目）',
+    revised.ok && revised.result.复盘.status === '已应验' && revised.result.复盘.log.length === 1
+    && revised.result.复盘.log[0].text === '自检：确实应了。' && revised.result.复盘.log[0].at === '2026-10-20',
+    `${revised.result?.复盘?.status}　${JSON.stringify(revised.result?.复盘?.log?.[0])}`);
 
   // 反推动爻取法：卦条只写「数、时、动」，应能认出当初用的是哪一路取法，不误报校勘
   const inferTmp = path.join(os.tmpdir(), `qxg-check-infer-${Date.now()}`);
@@ -1138,8 +1185,9 @@ console.log('\n【十四】小六壬');
   check('术语隔离：断课全文不出现梅花的说法',
     !/体用|生克|旺衰|本卦|互卦|变卦|动爻/.test(JSON.stringify(rec1.reading)),
     '未出现 体用／生克／旺衰／本卦／互卦／变卦／动爻');
-  check('记录升到 v4 且过 schema（oneOf 小六壬分支）',
-    rec1.schema === 4 && schemaMod2.validate(rec1, recordSchema2, { strict: true }).valid);
+  check('记录升到当前结构版本且过 schema（oneOf 小六壬分支）',
+    rec1.schema === rc2.SCHEMA_VERSION && schemaMod2.validate(rec1, recordSchema2, { strict: true }).valid,
+    `v${rec1.schema}`);
   check('应期按末宫神数（留连二·八·十 → 2–10 天）',
     rec1.yingqi && rec1.yingqi.minDays === 2 && rec1.yingqi.maxDays === 10 && rec1.yingqi.source === 'computed',
     `${rec1.yingqi?.minDays}–${rec1.yingqi?.maxDays} 天`);

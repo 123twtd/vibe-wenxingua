@@ -288,7 +288,7 @@ function recCard(item) {
  * ========================================================== */
 export const recordDetail = {
   title: '卦 录 · 详 情',
-  desc: '全卦与断语。七段定调在上，通俗解与卦典原文在下，末尾可复盘与导出。',
+  desc: '全卦与断语。七段定调在上，通俗解与卦典原文在下；复盘与追记到「复盘」页写。',
   async render(ctx) {
     const id = ctx.params.id;
     const { record: rec, panels } = await api.get(`/api/records/${encodeURIComponent(id)}`);
@@ -304,26 +304,6 @@ export const recordDetail = {
             <div class="t"><b>${h(x.label)}</b>　原述「${h(x.stated)}」→ 正法「${h(x.computed)}」</div>
             <span class="s">${h(x.note)}</span></div>`).join('')}
         </div>` : '';
-
-    const review = rec.review || {};
-    const reviewHtml = `<div class="card"><div class="card-title">复 盘</div>
-      <div class="grid c2">
-        <label class="fld"><span>状态</span>
-          <select id="rv-status">${meta.reviewStatuses.map((s) => `<option ${s === review.status ? 'selected' : ''}>${h(s)}</option>`).join('')}</select>
-        </label>
-        <label class="fld"><span>复盘时间</span>
-          <input type="text" id="rv-at" value="${attr(review.reviewedAt || '')}" placeholder="如 2026-12-20">
-        </label>
-      </div>
-      <label class="fld"><span>实况如何</span>
-        <textarea id="rv-result" placeholder="${isXlr ? '后来实际发生了什么？三宫与末宫断辞何处应了、何处没应？' : '后来实际发生了什么？与本卦何处相合、何处不合？'}">${h(review.result || '')}</textarea>
-      </label>
-      <div class="chips">
-        <button class="btn primary sm" id="rv-save">存 复 盘</button>
-        <button class="btn sm" id="rv-addlog">添 一 条 追 记</button>
-      </div>
-      <div style="margin-top:12px">${(review.log || []).map((e) => `<div class="classic"><div class="t">${h(e.text)}</div><span class="s">${h(e.at || '')}</span></div>`).join('') || '<div class="dim small">尚无追记。</div>'}</div>
-    </div>`;
 
     const panelHtml = (panels || []).map((p) => `<div class="card"><div class="card-title">${h(p.label || '插件面板')}</div>
       ${p.html ? p.html : `<pre class="md-code"><code>${h(JSON.stringify(p.data ?? p, null, 2))}</code></pre>`}</div>`).join('');
@@ -354,6 +334,8 @@ export const recordDetail = {
           ${(rec.tags || []).map((t) => `<span class="tag neutral">${h(t)}</span>`).join('')}
           <span style="flex:1"></span>
           <button class="btn sm ghost" data-go="#/records">← 返 回 卦 录</button>
+          <button class="btn sm" id="btn-review" data-go="#/review/${encodeURIComponent(rec.id)}"
+            title="复盘与追记已经搬到「复盘」页——那里是待办清单，也更方便连着写">复 盘 · ${h(rec.review?.status || '待应验')}</button>
           <button class="btn sm" id="btn-supp">补 充 存 录</button>
           <button class="btn sm" id="btn-recompute">重 算 断 语</button>
           <a class="btn sm ghost" href="/api/records/${encodeURIComponent(rec.id)}/export?format=md" download>导出 Markdown</a>
@@ -383,7 +365,6 @@ export const recordDetail = {
           <div class="card"><div class="card-title">时 间 与 历 法</div>${isXlr ? xlrLunarHtml(c) : ''}${calendarHtml(c.calendar)}</div>
         </div>
 
-        ${reviewHtml}
         ${supplementHtml}
         ${panelHtml}
 
@@ -393,29 +374,6 @@ export const recordDetail = {
         </div></div>`,
       mount(root) {
         root.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => ctx.navigate(b.dataset.go)));
-        root.querySelector('#rv-save').addEventListener('click', async () => {
-          const review2 = {
-            ...rec.review,
-            status: root.querySelector('#rv-status').value,
-            result: root.querySelector('#rv-result').value,
-            reviewedAt: root.querySelector('#rv-at').value || new Date().toISOString().slice(0, 10),
-          };
-          await api.patch(`/api/records/${encodeURIComponent(rec.id)}`, { review: review2 });
-          toast('复盘已存');
-          ctx.reload();
-        });
-        root.querySelector('#rv-addlog').addEventListener('click', () => {
-          modal(`<h3 class="card-title">追 记 一 条</h3>
-            <label class="fld"><span>时间</span><input type="text" id="lg-at" value="${new Date().toISOString().slice(0, 10)}"></label>
-            <label class="fld"><span>内容</span><textarea id="lg-tx" placeholder="今天此事有何进展？卦象何处应了？"></textarea></label>
-            <div class="chips"><button class="btn primary" id="lg-ok">存 下</button></div>`, (m, close) => {
-            m.querySelector('#lg-ok').addEventListener('click', async () => {
-              const log = [...(rec.review?.log || []), { at: m.querySelector('#lg-at').value, text: m.querySelector('#lg-tx').value }];
-              await api.patch(`/api/records/${encodeURIComponent(rec.id)}`, { review: { ...rec.review, log } });
-              close(); toast('已追记'); ctx.reload();
-            });
-          });
-        });
         root.querySelector('#btn-supp').addEventListener('click', () => {
           const area = (label, id, val, ph) => `<label class="fld" style="margin-bottom:9px"><span>${label}</span>
             <textarea id="${id}" style="min-height:78px" placeholder="${attr(ph)}">${h(val || '')}</textarea></label>`;
@@ -452,6 +410,195 @@ export const recordDetail = {
     };
   },
 };
+
+/* ============================================================
+ * 复盘页
+ * ------------------------------------------------------------
+ * 为什么单开一页：「当初怎么说」与「后来怎样了」是两件事。复盘卡原先夹在
+ * 详情页的卦象与原文之间，既打断「读卦 → 读原文」的顺读，又把「查」与「写」
+ * 混在一处。搬出来之后各归各位：
+ *   · 这一页回答「哪些还没了结、各自记到哪一步」，本质是**待办清单**；
+ *   · 详情页只留一个入口（页头「复 盘 · 状态」按钮）。
+ *
+ * 条目（v5 起复盘只有一个条目流）：最早那条通常就是首回复盘，之后是追记。
+ * **默认只读**——「开启操作」打开后每条才出现「改／删」。不落盘、不进 config：
+ * 每次刷新页面都从只读开始，免得顺手点错删掉一条（条目删了没有回收站）。
+ * ========================================================== */
+
+/** 今天（YYYY-MM-DD）：复盘条目的默认时间 */
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
+/** 复盘状态的配色（列表标签与面板共用一处，别处不许再写一份） */
+const REVIEW_TONE = {
+  已应验: 'good', 未应验: 'bad', 应验中: 'warn', 待应验: 'neutral', 已过期: 'warn', 无需应验: 'neutral',
+};
+
+export const reviewDesk = {
+  title: '复 盘',
+  desc: '哪些还没了结、各自记到哪一步了。左边挑一条，右边写——条目可改可删，但要先「开启操作」。',
+  /** 页内状态：筛选与「开启操作」；挂在视图上，切条目时不被重置，刷新页面回到默认。
+   *  `ops` 默认 false（只读）——自检直接读它验「默认只读」这条硬约定，别改成别处存 */
+  state: { filter: 'open', ops: false },
+  async render(ctx) {
+    const S = reviewDesk.state;
+    const meta = ctx.meta || await api.get('/api/meta');
+    const statuses = meta.reviewStatuses || [];
+    const all = (await api.get('/api/records')).items || [];
+    const id = ctx.params?.id ? String(ctx.params.id) : '';
+    const OPEN = ['待应验', '应验中'];
+
+    const filtered = all.filter((it) => {
+      const s = it.review?.status || '待应验';
+      if (S.filter === 'open') return OPEN.includes(s);
+      if (S.filter === 'all') return true;
+      return s === S.filter;
+    });
+    const openCount = all.filter((it) => OPEN.includes(it.review?.status || '待应验')).length;
+
+    const chips = [
+      ['open', `未了结 ${openCount}`], ['all', `全部 ${all.length}`],
+      ...statuses.map((s) => [s, s]),
+    ].map(([k, label]) => `<span class="chip${S.filter === k ? ' on' : ''}" data-rf="${attr(k)}">${h(label)}</span>`).join('');
+
+    /** 左栏一条：标题、状态、时间与类别、条目数、最近一条的摘句 */
+    const listHtml = filtered.map((it) => {
+      const log = it.review?.log || [];
+      const last = log[log.length - 1];
+      const s = it.review?.status || '待应验';
+      return `<a class="rv-item${it.id === id ? ' on' : ''}" href="#/review/${encodeURIComponent(it.id)}">
+        <div class="rv-hd"><b>${h(it.title)}</b><span class="tag ${REVIEW_TONE[s] || 'neutral'}">${h(s)}</span></div>
+        <div class="rv-meta">${h(fmtLocal(it.localTime))}　·　${h(it.category)}　·　${log.length} 条</div>
+        <div class="rv-last">${last ? h(String(last.text).replace(/\s+/g, ' ').slice(0, 42)) : '<span class="dim">还没有条目</span>'}</div>
+      </a>`;
+    }).join('') || `<div class="small dim" style="padding:10px 6px">${all.length ? '这一类下没有卦。换个筛选看看。' : '卦录还是空的——先起一卦，之后回来这里记录后事。'}</div>`;
+
+    /* ---------- 右栏：选中那条的复盘面板 ---------- */
+    let panelHtml = '<div class="empty"><div class="big">◉</div>左边挑一条，右边写复盘。</div>';
+    let rec = null;
+    let log = [];
+    if (id) {
+      rec = (await api.get(`/api/records/${encodeURIComponent(id)}`)).record;
+      log = rec.review?.log || [];
+      const ops = S.ops;
+      panelHtml = `
+        <div class="toolbar">
+          <span class="gold" style="letter-spacing:1px">${h(rec.title)}</span>
+          <span class="tb-sep"></span>
+          <span class="muted tiny">${h(fmtLocal(rec.cast?.localTime))}　·　${h(rec.category)}</span>
+          <span style="flex:1"></span>
+          <a class="btn sm ghost" href="#/record/${encodeURIComponent(rec.id)}">看 全 卦 →</a>
+        </div>
+        <div class="card">
+          <div class="card-title">复 盘
+            <span class="sp"></span>
+            <button class="btn sm ${ops ? '' : 'ghost'}" id="rv-ops"
+              title="${ops ? '关掉即回到只读——防顺手点错；条目删掉没有回收站' : '打开后每条条目才出现「改／删」；默认只读'}">${ops ? '关 闭 操 作' : '开 启 操 作'}</button>
+          </div>
+          <div class="rv-line">
+            <label class="fld"><span>状态</span>
+              <select id="rv-status">${statuses.map((s) => `<option ${s === (rec.review?.status || '待应验') ? 'selected' : ''}>${h(s)}</option>`).join('')}</select>
+            </label>
+            <div class="small dim">改状态即时保存。条目按写入顺序排——最早那条通常就是首回复盘，之后是追记。</div>
+          </div>
+          <div class="rv-log">${log.length
+            ? log.map((e, i) => entryHtml(e, i, ops)).join('')
+            : '<div class="dim small">还没有条目。点下面「写 一 条」，写下第一回复盘。</div>'}</div>
+          <div class="chips" style="margin-top:10px"><button class="btn primary sm" id="rv-write">写 一 条</button></div>
+        </div>`;
+    }
+
+    return {
+      html: `<div class="rv-wrap">
+        <aside class="rv-nav">
+          <div class="rv-nav-head">${S.filter === 'open' ? '还没了结的' : '筛选'}　<span class="dim">${filtered.length} 条</span></div>
+          <div class="chips" style="margin:0 0 8px">${chips}</div>
+          <div class="rv-list">${listHtml}</div>
+        </aside>
+        <section class="rv-panel">${panelHtml}</section>
+      </div>`,
+      mount(root) {
+        root.querySelectorAll('[data-rf]').forEach((c) => c.addEventListener('click', () => {
+          S.filter = c.dataset.rf;
+          ctx.reload();
+        }));
+        if (!rec) return;
+
+        const patch = async (next) => {
+          await api.patch(`/api/records/${encodeURIComponent(rec.id)}`, { review: next });
+          ctx.reload();
+        };
+        const saveLog = (nextLog) => patch({ status: rec.review?.status || '待应验', log: nextLog });
+
+        /** 写一条与改一条共用一个弹窗（一处实现；标题与预填不同而已） */
+        const entryModal = (index) => {
+          const cur = typeof index === 'number' ? log[index] : null;
+          modal(`<h3 class="card-title">${cur ? '改 这 一 条' : '写 一 条 复 盘'}</h3>
+            <label class="fld"><span>时间</span>
+              <input type="text" id="re-at" value="${attr(cur ? (cur.at || '') : todayStr())}" placeholder="如 2026-12-20；不想记时间就清空"></label>
+            <label class="fld"><span>内容</span>
+              <textarea id="re-tx" placeholder="后来实际发生了什么？卦在何处应了、何处没应？">${h(cur ? cur.text : '')}</textarea></label>
+            <div class="chips"><button class="btn primary" id="re-ok">存 下</button></div>`, (m, close) => {
+            m.querySelector('#re-ok').addEventListener('click', async () => {
+              const at = m.querySelector('#re-at').value.trim();
+              const text = m.querySelector('#re-tx').value.trim();
+              if (!text) { toast('内容不能是空的'); return; }
+              const next = [...log];
+              if (cur) next[index] = { at, text };
+              else next.push({ at, text });
+              close();
+              await saveLog(next);
+              toast(cur ? '已改这一条' : '已写下');
+            });
+          });
+        };
+
+        const delEntry = (i) => {
+          const e = log[i] || {};
+          const text = String(e.text || '');
+          modal(`<div class="card-title">删掉这一条？</div>
+            <div class="small" style="margin-bottom:6px">${h(text.slice(0, 80))}${text.length > 80 ? '…' : ''}</div>
+            <div class="small dim">条目删掉就没了（这里没有回收站）；卦录本身与状态不受影响——状态在上面单独改。</div>
+            <div class="chips" style="margin-top:10px"><button class="btn primary sm" id="de-ok">删 掉</button>
+              <button class="btn sm ghost" id="de-no">再 想 想</button></div>`, (m) => {
+            m.querySelector('#de-ok').addEventListener('click', async () => {
+              m.closest('.modal-mask')?.remove();
+              await saveLog(log.filter((_, k) => k !== i));
+              toast('已删掉这一条');
+            });
+            m.querySelector('#de-no').addEventListener('click', () => m.closest('.modal-mask')?.remove());
+          });
+        };
+
+        root.querySelector('#rv-ops')?.addEventListener('click', () => {
+          S.ops = !S.ops;
+          ctx.reload();
+        });
+        root.querySelector('#rv-status')?.addEventListener('change', async (e) => {
+          await patch({ status: e.target.value, log });
+          toast(`状态已改为「${e.target.value}」`);
+        });
+        root.querySelector('#rv-write')?.addEventListener('click', () => entryModal());
+        root.querySelectorAll('[data-rv]').forEach((b) => b.addEventListener('click', () => {
+          const i = Number(b.dataset.i);
+          if (b.dataset.rv === 'edit') entryModal(i);
+          else delEntry(i);
+        }));
+      },
+    };
+  },
+};
+
+/** 一条复盘条目。`ops` 为真才画出「改／删」——默认只读是这一页的硬约定 */
+function entryHtml(e, i, ops) {
+  return `<div class="rv-entry">
+    <div class="rv-at">${e.at ? h(e.at) : '<span class="dim">未记时间</span>'}</div>
+    <div class="rv-text">${renderMarkdown(e.text || '')}</div>
+    ${ops ? `<div class="rv-acts">
+      <button class="btn sm ghost" data-rv="edit" data-i="${i}">改</button>
+      <button class="btn sm ghost danger" data-rv="del" data-i="${i}">删</button>
+    </div>` : ''}
+  </div>`;
+}
 
 /* ============================================================
  * 起卦台

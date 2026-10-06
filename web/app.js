@@ -16,7 +16,7 @@ import { api, h, attr, toast, modal } from './api.js';
 import {
   dashboard, records, recordDetail, castDesk, importDesk,
   dian, dianDetail, pluginsView, pluginPage,
-  trendView, agentView, settingsView, docsView,
+  trendView, agentView, settingsView, docsView, reviewDesk,
 } from './views.js';
 import { createPalette } from './palette.js';
 import {
@@ -37,6 +37,7 @@ const NAV = [
 
 /** 不占侧栏常驻位、也不进插件组的入口：走命令面板与「更多」 */
 const OFF_NAV = [
+  { path: '#/review', label: '复 盘', icon: '◉', view: reviewDesk, hint: '待办清单、写一条、改删条目' },
   { path: '#/docs', label: '文 档', icon: '☰', view: docsView, hint: '使用说明、文档索引与设计文档' },
   { path: '#/dian', label: '卦 典', icon: '䷁', view: dian, hint: '六十四卦全表' },
   { path: '#/settings', label: '设 置', icon: '⚙', view: settingsView, hint: '助手权限、模型、数据目录' },
@@ -56,6 +57,8 @@ function parseHash() {
   if (a === 'cast') return { name: 'cast', params: {} };
   if (a === 'import') return { name: 'import', params: {} };
   if (a === 'agent') return { name: 'agent', params: {} };
+  // 复盘页：清单与「选中某一条」共用一个视图，id 走第二段
+  if (a === 'review') return { name: 'review', params: { id: b ? decodeURIComponent(b) : '' } };
   // #/spec 是旧地址：规范并进「导入」页之后撤销了这一页。
   // 桌面菜单、书签与旧文档里可能还指着它，这里只做一次转发，不再留两个入口。
   if (a === 'spec') return { name: 'import', params: {} };
@@ -75,6 +78,7 @@ const VIEWS = {
   dashboard, records, record: recordDetail, cast: castDesk, import: importDesk,
   dian, dianDetail, plugins: pluginsView, pluginPage,
   trend: trendView, agent: agentView, settings: settingsView, docs: docsView,
+  review: reviewDesk,
 };
 
 const ctx = {
@@ -637,6 +641,12 @@ async function askAssistant(text) {
 /** 「这一版更新了什么」：键就是 package.json 里的版本号。
  *  加新版本时在这里补一条——写给人看的大白话，别堆术语。 */
 const WHATS_NEW = {
+  '1.4.0': [
+    '复盘独立成一页（命令面板搜「复盘」或侧栏底部「更多」进）：左边是待办清单，右边写——默认只列「未了结」的卦。',
+    '复盘与追记合成一条条目流：最早那条通常就是首回复盘，之后每条都是追记；条目可改可删（先点「开启操作」——默认只读，防手滑）。',
+    '老的「实况」与「复盘时间」已并入条目流（启动时自动搬家：不丢字、不重排、不猜日期），导出、卦条与助手工具也跟着统一。',
+    '卦录详情页不再内嵌复盘表单，页头留一个「复 盘 · 状态」按钮直达那一页。',
+  ],
   '1.3.0': [
     '修好了卦录「原文存录」里满屏的换行标记（原来每处换行都显示成一串尖括号标签），段内换行现在正常折行。',
     '对话里输入的多行文字保留换行与格式（原来会被折成一整段）。',

@@ -10,7 +10,7 @@
     "schema": {
       "type": "integer",
       "minimum": 1,
-      "description": "结构版本号。当前为 4（v2 增 yingqi；v3 增 background／plan／collation／qa 四项补充存录；v4 收录小六壬——cast.method 增两项、chart／reading 允许三宫形态）。升级路径见 core/migrate.mjs。"
+      "description": "结构版本号。当前为 5（v2 增 yingqi；v3 增 background／plan／collation／qa 四项补充存录；v4 收录小六壬——cast.method 增两项、chart／reading 允许三宫形态；v5 复盘条目化——review 收敛为 status ＋ log[]，result／reviewedAt 并入首条条目）。升级路径见 core/migrate.mjs。"
     },
     "id": {
       "type": "string",
@@ -257,21 +257,20 @@
     },
     "review": {
       "type": "object",
-      "required": ["status", "result", "log"],
-      "description": "复盘：长期使用中最值钱的部分。",
+      "required": ["status", "log"],
+      "description": "复盘：只有一个状态和一个条目流。最早那条通常就是最初写的复盘，之后是追记。",
       "properties": {
         "status": {
           "type": "string",
           "enum": ["待应验", "应验中", "已应验", "未应验", "已过期", "无需应验"]
         },
-        "result": { "type": "string", "description": "实况：后来发生了什么、卦在何处应了、何处没应。" },
-        "reviewedAt": { "type": ["string", "null"], "description": "复盘时间。" },
         "log": {
           "type": "array",
+          "description": "复盘条目流（含首条复盘与后续追记），按写入顺序排列。",
           "items": {
             "type": "object",
             "properties": {
-              "at": { "type": "string" },
+              "at": { "type": "string", "description": "这一条的日期；老数据没记时间时为空串。" },
               "text": { "type": "string" }
             },
             "additionalProperties": true

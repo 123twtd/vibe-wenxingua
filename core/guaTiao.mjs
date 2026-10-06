@@ -23,6 +23,9 @@
  *   原文: |                      ← 可省，可多行
  *     原文……
  *   背景: |  问答: |  方案: |  校勘: |   ← 均可省，多行块；用于记「完整占问」
+ *   复盘条目: |                  ← 可省，多行块；一行一条，行首可写日期，
+ *     2026-12-20 初试过了           如「2026-12-20 初试过了」。最早那条通常是首条复盘，
+ *     2026-12-25 复试名单出了         之后是追记；程序只追加、不改写。
  *
  * 多条卦条：用一行 `---` 分隔。
  * ────────────────────────────────────────────────────────
@@ -59,11 +62,15 @@ export const FIELD_ALIASES = {
   collation: ['校勘', '人工校勘', '勘误', 'collation'],
   qa: ['问答', '原文问答', '问答原文', 'qa'],
   status: ['复盘', '状态', 'status'],
+  // 「实况」是 v5 之前的键：那时复盘正文是一个单独字段。现在统一成条目流，
+  // 这个键仍然认（老归档文件不能白写），解析后作为**一条没有日期的条目**——
+  // 不替用户猜日期，界面上显示「未记时间」，可以自己补。
   result: ['实况', '结果', 'result'],
+  reviews: ['复盘条目', '追记', '复盘记录', 'reviews', 'entries'],
 };
 
-/** 支持 `键: |` 起多行块的字段。块内容原样保留，不做解析。 */
-export const BLOCK_FIELDS = new Set(['narrative', 'background', 'plan', 'collation', 'qa']);
+/** 支持 `键: |` 起多行块的字段。块内容原样保留，不做解析（`reviews` 除外，见下）。 */
+export const BLOCK_FIELDS = new Set(['narrative', 'background', 'plan', 'collation', 'qa', 'reviews']);
 
 /** 反向索引：键名（小写去空格）→ 内部字段 */
 const KEY_LOOKUP = (() => {
@@ -285,7 +292,7 @@ export function parseGuaTiao(text) {
       claimed: {},
       signature: values.signature || '',
       tags: [],
-      review: { status: values.status || '待应验', result: values.result || '' },
+      review: { status: values.status || '待应验', log: [] },
       title: values.title || '',
       hexagramText: '',
       movingText: '',
@@ -385,7 +392,10 @@ export function parseGuaTiao(text) {
     tags: values.tags ? String(values.tags).split(/[\s,，、|]+/).filter(Boolean) : [],
     review: {
       status: values.status || '待应验',
-      result: values.result || '',
+      log: [
+        ...(values.result ? [{ at: '', text: String(values.result) }] : []),
+        ...parseReviewEntries(blockValues.reviews),
+      ],
     },
     title: values.title || '',
     hexagramText: hexagram,
@@ -432,6 +442,29 @@ function pushBlock(out, label, text) {
 }
 
 /**
+ * 复盘条目块 → `[{at, text}]`。
+ * 一行一条；行首写 `YYYY-MM-DD` 就当这一条的日期，没写就留空串。
+ * 空行跳过——多行块里夹空行是手写文件常事，不该变成一条空条目。
+ */
+function parseReviewEntries(text) {
+  return String(text || '').split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const m = line.match(/^(\d{4}-\d{2}-\d{2})\s+(.*)$/);
+      return m ? { at: m[1], text: m[2] } : { at: '', text: line };
+    });
+}
+
+/** 复盘条目 → 多行块正文（导出用；一行一条，正文里的换行压成空格） */
+function entriesText(log) {
+  return (log || [])
+    .filter((e) => e && String(e.text || '').trim())
+    .map((e) => `${e.at ? `${e.at} ` : ''}${String(e.text).replace(/\n/g, ' ')}`)
+    .join('\n');
+}
+
+/**
  * 小六壬卦录 → 只导出文字存录，不导出时／数／卦象字段。
  * 卦条 v1 描述不了三宫之课；这样写出的文件再导入会明确报「不支持」，而不是被猜成梅花。
  */
@@ -447,7 +480,7 @@ function xlrToNotice(rec, withNarrative) {
   if (rec.reading?.signature) L.push(`签: ${rec.reading.signature}`);
   if (rec.tags?.length) L.push(`标签: ${rec.tags.join(' ')}`);
   if (rec.review?.status) L.push(`复盘: ${rec.review.status}`);
-  if (rec.review?.result) L.push(`实况: ${rec.review.result.replace(/\n/g, ' ')}`);
+  pushBlock(L, '复盘条目', entriesText(rec.review?.log));
   pushBlock(L, '背景', rec.background);
   pushBlock(L, '问答', rec.qa);
   if (withNarrative) pushBlock(L, '原文', rec.narrative);
@@ -491,7 +524,7 @@ export function toGuaTiao(rec, opts = {}) {
   if (rec.reading?.signature) L.push(`签: ${rec.reading.signature}`);
   if (rec.tags?.length) L.push(`标签: ${rec.tags.join(' ')}`);
   if (rec.review?.status) L.push(`复盘: ${rec.review.status}`);
-  if (rec.review?.result) L.push(`实况: ${rec.review.result.replace(/\n/g, ' ')}`);
+  block(L, '复盘条目', entriesText(rec.review?.log));
   block(L, '问答', rec.qa);
   if (withNarrative) block(L, '原文', rec.narrative);
   block(L, '方案', rec.plan);
@@ -534,6 +567,8 @@ export function template() {
 # 问答: |   当初的原文问答，约定以「问：」「答：」起行
 # 方案: |   可执行方案
 # 校勘: |   人工校勘说明（与引擎自动算出的 corrections 分开）
+# 复盘条目: |   一行一条：最早那条通常是首条复盘，之后是追记；行首可写日期
+#   2026-12-20 初试过了
 原文: |
   （可省。把当初的解读全文粘在这里，多行不限。）
 `;

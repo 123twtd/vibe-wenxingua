@@ -950,6 +950,55 @@ body.agent-open .app { padding-right: var(--panel-w); }
   .docs-nav { position: static; }
 }
 
+/* ============================================================
+   八·B、复盘页
+   ------------------------------------------------------------
+   左清单、右面板（与「文档」页同构）；右栏是一条条复盘条目：
+   一行时间 + 正文（Markdown 渲染）。「改／删」只在「开启操作」
+   打开时才画出来——默认只读，是这一页的硬约定。
+   ========================================================== */
+.rv-wrap { display: grid; grid-template-columns: 300px 1fr; gap: 12px; align-items: start; }
+.rv-nav {
+  position: sticky; top: 4px; padding: 8px;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius);
+}
+.rv-nav-head {
+  font-size: 10px; letter-spacing: 1.4px; color: var(--ink-3);
+  padding: 2px 6px 8px; border-bottom: 1px dashed var(--rule); margin-bottom: 8px;
+}
+.rv-list { display: flex; flex-direction: column; gap: 2px; max-height: 60vh; overflow-y: auto; padding-right: 3px; }
+.rv-item {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 6px 8px; border-left: 2px solid transparent; border-radius: var(--radius-sm);
+  color: var(--ink-2);
+}
+.rv-item:hover { background: var(--surface-2); text-decoration: none; }
+.rv-item.on { background: var(--surface-3); border-left-color: var(--accent); }
+.rv-hd { display: flex; align-items: center; gap: 6px; }
+.rv-hd b { font-size: 12.5px; font-weight: 500; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv-hd .tag { flex: none; }
+.rv-meta { font-size: 10.5px; color: var(--ink-3); font-family: var(--sans); }
+.rv-last { font-size: 11px; line-height: 1.6; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv-panel { min-width: 0; }
+.rv-line { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 10px; }
+.rv-line .fld { flex: none; width: 148px; margin-bottom: 0; }
+.rv-log { display: flex; flex-direction: column; gap: 7px; }
+.rv-entry {
+  display: grid; grid-template-columns: 86px minmax(0, 1fr) auto; gap: 10px; align-items: start;
+  padding: 8px 10px; background: var(--bg); border: 1px solid var(--rule);
+  border-left: 2px solid var(--accent); border-radius: var(--radius-sm);
+}
+.rv-at { font-family: var(--mono); font-size: 11px; color: var(--ink-3); padding-top: 2px; word-break: break-all; }
+.rv-text { min-width: 0; }
+.rv-text .md-p { margin-bottom: 4px; }
+.rv-text .md-p:last-child { margin-bottom: 0; }
+.rv-acts { display: flex; gap: 4px; flex: none; }
+@media (max-width: 900px) {
+  .rv-wrap { grid-template-columns: 1fr; }
+  .rv-nav { position: static; }
+  .rv-list { max-height: none; }
+}
+
 /* ---------- 折叠块（导入页的格式速查等） ---------- */
 details.fmt { margin-top: 8px; }
 details.fmt > summary {

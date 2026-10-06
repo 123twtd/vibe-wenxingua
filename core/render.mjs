@@ -10,6 +10,20 @@ import { isXlrChart, XLR_LABELS } from './xiaoliuren.mjs';
 
 const LIUYAO_LABEL = ['上', '五', '四', '三', '二', '初'];
 
+/**
+ * 复盘块（梅花与小六壬两套 Markdown 版式共用一处）。
+ * 复盘在 v5 之后只有一个条目流：最早那条通常是首条复盘，之后是追记。
+ * 条目按写入顺序列出；没记日期的那条就不写日期（不替用户猜一个）。
+ */
+function reviewBlock(rec) {
+  const L = ['## 复盘', '', `- **状态**　${rec.review.status}`];
+  for (const e of rec.review.log || []) {
+    L.push(`- ${e.at ? `${e.at}　` : ''}${e.text || ''}`);
+  }
+  L.push('');
+  return L;
+}
+
 /** 六爻图：自下而上，阳爻 ━━━，阴爻 ━ ━；动爻加 ◉ */
 export function drawLines(lines, movingPosition) {
   const rows = [];
@@ -138,15 +152,7 @@ export function toMarkdown(rec) {
     L.push('');
   }
 
-  L.push('## 复盘');
-  L.push('');
-  L.push(`- **状态**　${rec.review.status}`);
-  if (rec.review.result) L.push(`- **实况**　${rec.review.result}`);
-  if (rec.review.reviewedAt) L.push(`- **复盘时间**　${rec.review.reviewedAt}`);
-  for (const e of rec.review.log || []) {
-    L.push(`- ${e.at || ''}　${e.text || ''}`);
-  }
-  L.push('');
+  L.push(...reviewBlock(rec));
   L.push('---');
   L.push('');
   L.push(`*问心卦 · 卦录 ${rec.id} · 录于 ${rec.createdAt} · 卦象仅供参考，决断在己。*`);
@@ -239,15 +245,7 @@ function xlrMarkdown(rec) {
     L.push('');
   }
 
-  L.push('## 复盘');
-  L.push('');
-  L.push(`- **状态**　${rec.review.status}`);
-  if (rec.review.result) L.push(`- **实况**　${rec.review.result}`);
-  if (rec.review.reviewedAt) L.push(`- **复盘时间**　${rec.review.reviewedAt}`);
-  for (const e of rec.review.log || []) {
-    L.push(`- ${e.at || ''}　${e.text || ''}`);
-  }
-  L.push('');
+  L.push(...reviewBlock(rec));
   L.push('---');
   L.push('');
   L.push(`*问心卦 · 卦录 ${rec.id} · 录于 ${rec.createdAt} · 小六壬之课仅供参考，决断在己。*`);

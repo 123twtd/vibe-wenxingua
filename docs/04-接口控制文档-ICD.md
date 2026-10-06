@@ -1,11 +1,11 @@
-﻿# 问心卦 · 接口控制文档（ICD）
+# 问心卦 · 接口控制文档（ICD）
 | 项 | 内容 |
 |---|---|
 | 文档编号 | 04 |
 | 标题 | 问心卦 · 接口控制文档（ICD） |
 | 版本 | 1.0 |
 | 状态 | 已发布 |
-| 适用产品版本 | v1.3.0 |
+| 适用产品版本 | v1.4.0 |
 | 最后更新 | 2026-10-07 |
 | 读者 | 接口责任人、插件作者、外部 agent 集成者、变更评审人、维护者 |
 | 关联文档 | [00-文档索引.md](00-文档索引.md)、[01-系统设计说明书.md](01-系统设计说明书.md)、[02-架构与框图.md](02-架构与框图.md)、[03-接口文档.md](03-接口文档.md)、[05-Agent设计文档.md](05-Agent设计文档.md)、[06-Hermes网关与路由设计.md](06-Hermes网关与路由设计.md)、[07-数据模型与存储设计.md](07-数据模型与存储设计.md)、[11-安全与隐私设计.md](11-安全与隐私设计.md)、[12-插件与扩展开发指南.md](12-插件与扩展开发指南.md)、[规范.md](规范.md) |
@@ -326,7 +326,7 @@
 | `origin.kind` | string | 否 | 见 6.12 | `cast` | 来源类别 | REST-003（映射为 `origins`） |
 | `claimed` | obj\|null | 否 | 见 5.5 | `null` | 当初别人所述的卦 | REST-004/005/009 |
 | `corrections` | arr | 否 | 见 5.6 | `[]` | 校勘：原述与重算不符处 | REST-003/005/009 |
-| `review` | obj | **是** | 见 5.7 | `{status:'待应验',result:'',reviewedAt:null,log:[]}` | 复盘 | REST-004/005/006/009 |
+| `review` | obj | **是** | 见 5.7 | `{status:'待应验',log:[]}` | 复盘：状态 + 条目流 | REST-004/005/006/009 |
 | `tags` | string[] | 否 | 任意 | `[]` | 标签 | REST-003/005/009 |
 | `source` | obj\|null | 否 | 任意 | `null` | 外部来源 | REST-005/009 |
 | `createdAt` / `updatedAt` ／ `revisionCount` | string ／ int | **是** ／ 否 | ISO 8601 ／ ≥0 | 首次落盘时间 ／ `0` | 录入时间 / 最后修改时间 ／ 重算次数 | REST-003/005/006/008 ／ REST-005/008 |
@@ -457,12 +457,10 @@
 ### 5.7 复盘 `review`
 | 字段路径 | 类型 | 必填 | 取值范围/枚举 | 默认 | 语义 |
 |---|---|---|---|---|---|
-| `review.status` | string | **是** | 6 状态枚举 | `待应验` | 复盘状态 |
-| `review.result` | string | **是** | 任意 | `''` | 实况：后来发生了什么、卦在何处应了、何处没应 |
-| `review.reviewedAt` | string\|null | 否 | ISO 8601 或 `null` | `null` | 复盘时间 |
-| `review.log[]` | arr | **是** | 元素 `{at,text}` | `[]` | 追记 |
-| `review.log[].at` / `.text` | string | 否 | 日期串 / 任意 | — | 追记时间 / 内容 |
-`review.additionalProperties: false`（只有 `status`/`result`/`reviewedAt`/`log` 四键）。出现接口：REST-003/004/005/006/009。
+| `review.status` | string | **是** | 6 状态枚举 | `待应验` | 复盘状态（改它不动任何条目） |
+| `review.log[]` | arr | **是** | 元素 `{at,text}` | `[]` | 复盘条目流：最早那条通常是最初写的复盘，之后是追记 |
+| `review.log[].at` / `.text` | string | 否 | 日期串（**可为空串**） / 任意 | — | 这一条的日期 / 正文 |
+`review.additionalProperties: false`（只有 `status`/`log` 两键）。v5 之前还有 `result`／`reviewedAt` 两键，已由 4→5 迁移并入首条条目——见 [07-数据模型与存储设计.md](07-数据模型与存储设计.md) 与 [core/migrate.mjs](../core/migrate.mjs)。出现接口：REST-003/004/005/006/009。
 
 ### 5.8 卦条解析结果（REST-012/022、`save_gua_tiao`）
 | 字段路径 | 类型 | 必填 | 取值范围 | 语义 |
@@ -534,7 +532,7 @@
 | `id` | string | 视工具 | 卦录 id | — | 目标卦录 | `get_record`、`update_record`、`update_review` |
 | `q` | string | 否 | 任意 | — | 关键词 | `list_records` |
 | `grade` / `review` ／ `limit` | string ／ int | 否 ／ 否 | 6 个吉凶等级 / 6 个复盘状态 ／ 1–100 | — ／ `20` | 吉凶 / 复盘状态筛选 ／ 返回条数 | `list_records` ／ `list_records` |
-| `status` / `result` / `logText` / `logAt` ／ `mode` / `domains` / `smooth` / `rangeDays` / `categories` | string ／ string / string[] / int / int / string[] | 否 ／ 否 | 6 状态 / 任意 / 任意 / 日期串 ／ 3 模式 / 6 个 `signed` 领域 / 1–12 / ≥0 / 8 类 | `logAt` 默认当天 ／ `fortune` / 全部 fortune 领域 / `1` / `0` / — | 复盘状态、实况、追记正文、追记时间 ／ 走势参数 | `update_review` ／ `trend` |
+| `status` / `text` / `at` ／ `mode` / `domains` / `smooth` / `rangeDays` / `categories` | string / string / string ／ string / string[] / int / int / string[] | 否 ／ 否 | 6 状态 / 任意 / 日期串（可为空串） ／ 3 模式 / 6 个 `signed` 领域 / 1–12 / ≥0 / 8 类 | `at` 默认当天 ／ `fortune` / 全部 fortune 领域 / `1` / `0` / — | 复盘状态、新写的一条复盘／追记、这一条的日期 ／ 走势参数 | `update_review` ／ `trend` |
 | `query` | string | **是**（`hexagram_lookup`） | 卦名/卦序/卦符/关键词 | — | 卦典查询 | `hexagram_lookup` |
 `stats` 与 `format_spec` 无入参（`properties: {}`）。
 
@@ -644,7 +642,7 @@
 | `plan` | 方案、可执行方案、行动方案、plan |
 | `collation` | 校勘、人工校勘、勘误、collation |
 | `qa` | 问答、原文问答、问答原文、qa |
-| `status` / `result` | 复盘、状态、status ／ 实况、结果、result |
+| `status` / `result` / `reviews` | 复盘、状态、status ／ 实况、结果、result（**旧键，兼容**）／ 复盘条目、追记、复盘记录、reviews、entries（多行块） |
 匹配规则：键名**小写化**后查表（`localtime` 与 `localTime` 等价）。别名**只增不减**。
 
 ### 6.10 内置城市 `places`（10）

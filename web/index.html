@@ -24,6 +24,12 @@
     </div>
   </header>
 
+  <!-- 版本更新提示：检测到 GitHub 上有新发行版时由 app.js 点亮。
+       它是 .app 网格里的**一行**（不是浮层）——出现时把下面整体推下去，
+       绝不盖在页面上：早先做成 position:fixed 的浮条，正好压在页头标题与
+       「总览」的说明文字上，半透明底还让两边文字叠在一起。 -->
+  <div class="update-banner" id="update-banner"></div>
+
   <!-- 侧栏：六项主项 + 自成一组的插件（组内滚动） + 「更多」，侧栏本身永不滚动 -->
   <div class="shell">
     <aside class="side">
@@ -42,10 +48,6 @@
   <!-- 状态栏：把散信息压成一行，不占侧栏 -->
   <footer class="status" id="status"></footer>
 </div>
-
-<!-- 版本更新提示：检测到 GitHub 上有新发行版时由 app.js 点亮。
-     固定定位挂在顶栏下沿，不占布局——出现与消失都不挤动主区。 -->
-<div class="update-banner" id="update-banner"></div>
 
 <div class="more-panel" id="more-panel"></div>
 

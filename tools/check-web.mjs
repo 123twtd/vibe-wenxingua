@@ -617,21 +617,25 @@ console.log('\n【二·D】版本更新：更新说明、版本比较与横幅')
     && qxg.hasNewerVersion('1.3.0', '1.3.0') === false
     && qxg.hasNewerVersion('1.3.0', '1.2.9') === false
     && qxg.hasNewerVersion('1.3.0', '') === false);
-  const banner = qxg.updateBannerHtml({ latest: '9.9.9', url: 'https://github.com/123twtd/vibe-wenxingua/releases' });
-  check('更新横幅：带新版本号、发行页入口与关闭按钮',
-    banner.includes('9.9.9') && banner.includes('查 看 更 新')
-    && banner.includes('id="ub-go"') && banner.includes('id="ub-close"') && !banner.includes('update-banner'),
-    banner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90));
+  const banner = qxg.updateBannerHtml({
+    latest: '9.9.9', url: 'https://github.com/123twtd/vibe-wenxingua/releases',
+    assetUrl: 'https://github.com/123twtd/vibe-wenxingua/releases/download/v9.9.9/wenxingua-9.9.9-setup.exe', size: 82400000,
+  });
+  check('更新横幅：带新版本号、直接下载入口、发行说明与关闭按钮（不自己画容器）',
+    banner.includes('9.9.9') && banner.includes('下 载 新 版') && banner.includes('约 79 MB')
+    && banner.includes('id="ub-page"') && banner.includes('id="ub-close"') && !banner.includes('update-banner'),
+    banner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100));
 }
 
 console.log('\n【二·E】更新检测接口与配置写入口');
 {
   // 先按默认（开着检测）问一次：无论 GitHub 通不通，都必须 ok:true，不许 500
   const uc = await (await fetch(`${BASE}/api/update-check`)).json();
-  check('更新检测：网络通就有版本号、不通就静默降级（照样 ok:true，绝不 500）',
+  check('更新检测：网络通就有版本号与资产直链、不通就静默降级（照样 ok:true，绝不 500）',
     uc.ok === true && uc.current === meta.app.version && typeof uc.latest === 'string'
+    && typeof uc.assetUrl === 'string' && typeof uc.size === 'number'
     && (uc.latest === '' ? !!uc.error : true),
-    uc.latest ? `最新 ${uc.latest}（本机 ${uc.current}）` : `取不到（静默）：${uc.error || '未知原因'}`);
+    uc.latest ? `最新 ${uc.latest}（本机 ${uc.current}）${uc.assetUrl ? '　有直链' : '　无资产→退回发行页'}` : `取不到（静默）：${uc.error || '未知原因'}`);
 
   const before = meta.config || {};
   // 白名单：顶层配置只认 lastSeenVersion 与 updateCheck，别的键一个都不许动

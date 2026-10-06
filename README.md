@@ -46,7 +46,7 @@
 
 仓库里**不含安装包**（二进制不进 git，走 Releases）。两条路：
 
-- **直接下载**：[Releases · v1.4.0](https://github.com/123twtd/vibe-wenxingua/releases/latest) → `wenxingua-1.4.0-setup.exe`（约 78 MB，中文向导，双击安装）
+- **直接下载**：[Releases · v1.4.1](https://github.com/123twtd/vibe-wenxingua/releases/latest) → `wenxingua-1.4.1-setup.exe`（约 78 MB，中文向导，双击安装）
 - **自己打**，约两分钟：
 
 ```
@@ -116,7 +116,7 @@ node server/index.mjs --port 8080   # 换端口
   ┌──────────────────────────────────────────────┐
   │            问  心  卦   ·   卦录台            │
   └──────────────────────────────────────────────┘
-   版本      v1.4.0
+   版本      v1.4.1
    地址      http://127.0.0.1:19730/
    数据目录  …\问心卦\data
 ```

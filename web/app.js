@@ -641,6 +641,10 @@ async function askAssistant(text) {
 /** 「这一版更新了什么」：键就是 package.json 里的版本号。
  *  加新版本时在这里补一条——写给人看的大白话，别堆术语。 */
 const WHATS_NEW = {
+  '1.4.1': [
+    '更新提示条不再盖住页面：它改成顶栏下的一条实心横条，出现时把下面整体推下去（原来是一条半透明浮条，正好压着页头标题与说明文字）。',
+    '「下 载 新 版」可以直接下安装包了（连体积一起写出来），不必先跳发行页再自己找资产；旁边另给「发 行 说 明」。',
+  ],
   '1.4.0': [
     '复盘独立成一页（命令面板搜「复盘」或侧栏底部「更多」进）：左边是待办清单，右边写——默认只列「未了结」的卦。',
     '复盘与追记合成一条条目流：最早那条通常就是首回复盘，之后每条都是追记；条目可改可删（先点「开启操作」——默认只读，防手滑）。',
@@ -669,12 +673,16 @@ function hasNewerVersion(current, latest) {
   return false;
 }
 
-/** 横幅的 HTML。纯函数，自检直接调它核对文案与入口（不碰网络、不碰 DOM）。 */
+/** 横幅的 HTML。纯函数，自检直接调它核对文案与入口（不碰网络、不碰 DOM）。
+ *  主按钮是**直接下载**（资产直链）：只给发行页地址的话，用户还得自己在一堆
+ *  资产里找安装包——那时就会被问「不能直接获取下载吗」。 */
 function updateBannerHtml(info) {
+  const mb = info.size ? `（约 ${Math.round(info.size / 1048576)} MB）` : '';
   return `<span class="ub-ic">⬆</span>
-    <span>发现新版本 <b>v${h(info.latest)}</b>——去发行页下载安装即可，不更新也不影响现在用。</span>
+    <span>发现新版本 <b>v${h(info.latest)}</b>——点「下 载 新 版」直接下安装包${mb}，覆盖安装即可；不更新也不影响现在用。</span>
     <span class="sp"></span>
-    <button class="btn sm primary" id="ub-go">查 看 更 新</button>
+    <button class="btn sm primary" id="ub-go">下 载 新 版</button>
+    <button class="btn sm ghost" id="ub-page" title="打开发行页，看这一版改了什么">发 行 说 明</button>
     <button class="btn sm ghost" id="ub-close" title="这次先不看（下次启动还会提示一次）">✕</button>`;
 }
 
@@ -718,12 +726,14 @@ async function checkForUpdates() {
   if (!r?.latest || !hasNewerVersion(META?.app?.version || '', r.latest)) return;
   const el = document.getElementById('update-banner');
   if (!el) return;
-  const info = { latest: r.latest, url: r.url || UPDATE_REPO_URL };
+  const info = { latest: r.latest, url: r.url || UPDATE_REPO_URL, assetUrl: r.assetUrl || '', size: r.size || 0 };
   el.innerHTML = updateBannerHtml(info);
   el.classList.add('on');
   /* 打开方式与文档页外链同一条路：浏览器里新开标签；桌面版被主进程的
-     setWindowOpenHandler 接住，改用系统浏览器打开（见 desktop/main.mjs）。 */
-  el.querySelector('#ub-go')?.addEventListener('click', () => window.open(info.url, '_blank', 'noopener'));
+     setWindowOpenHandler 接住，改用系统浏览器打开（见 desktop/main.mjs）。
+     没有资产直链（老发行版）时，主按钮退回发行页。 */
+  el.querySelector('#ub-go')?.addEventListener('click', () => window.open(info.assetUrl || info.url, '_blank', 'noopener'));
+  el.querySelector('#ub-page')?.addEventListener('click', () => window.open(info.url, '_blank', 'noopener'));
   el.querySelector('#ub-close')?.addEventListener('click', () => el.classList.remove('on'));
 }
 

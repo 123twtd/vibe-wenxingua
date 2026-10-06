@@ -169,7 +169,9 @@ kbd {
    ========================================================== */
 .app {
   display: grid;
-  grid-template-rows: var(--top-h) 1fr var(--status-h);
+  /* 第二行是版本更新横幅：它**始终是网格的一项**，关着的时候高度塌成 0——
+     不能用 display:none（那样它就不是网格项了，后面三项会整体上移错位）。 */
+  grid-template-rows: var(--top-h) auto 1fr var(--status-h);
   height: 100vh;
 }
 .shell { display: grid; grid-template-columns: var(--side-w) 1fr; min-height: 0; }
@@ -632,20 +634,20 @@ code { font-family: var(--mono); background: var(--surface-3); padding: 0 4px; b
 }
 @keyframes up { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
-/* 版本更新横幅：挂在顶栏下沿的一条提示，固定定位、不挤动布局。
-   只在检测到新发行版时出现；「查看更新」去发行页，✕ 关掉就安静到下次启动。 */
+/* 版本更新横幅：顶栏下沿的一条**实心**提示，占布局一行（见 .app 的网格行）。
+   出现时把下面的内容整体推下去，绝不盖在页面上；关着时高度为 0、只是不占位。
+   早先它是 position: fixed 的浮条 + 半透明底：正好压在页头标题与说明文字上，
+   两边文字叠在一起（用户当场报过）。 */
 .update-banner {
-  display: none; position: fixed; left: 0; right: 0; top: var(--top-h); z-index: 250;
-  align-items: center; gap: 10px; padding: 7px 14px;
-  background: var(--tint-1); border-bottom: 1px solid var(--accent); box-shadow: var(--shadow-md);
+  display: flex; align-items: center; gap: 10px;
+  height: 0; padding: 0 14px; overflow: hidden;
+  background: var(--surface); border-bottom: 0 solid var(--accent);
   font-size: 12.5px; color: var(--ink-2); line-height: 1.6;
-  animation: down .18s ease-out;
 }
-.update-banner.on { display: flex; }
+.update-banner.on { height: auto; padding: 7px 14px; border-bottom-width: 1px; }
 .update-banner .ub-ic { color: var(--accent); font-size: 14px; flex: none; }
 .update-banner b { color: var(--accent-3); }
 .update-banner .sp { flex: 1; }
-@keyframes down { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 
 .fade { animation: fade .2s ease-out; }
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }

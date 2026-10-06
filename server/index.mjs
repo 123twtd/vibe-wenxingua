@@ -352,10 +352,19 @@ async function fetchLatestRelease() {
     const text = await res.text();
     if (text.length > UPDATE_MAX_BYTES) throw new Error('响应体过大，已忽略');
     const rel = JSON.parse(text);
+    const assets = Array.isArray(rel.assets) ? rel.assets : [];
+    /* 首选安装包（.exe）。为什么要它：界面上的按钮是「直接下载」——
+       只给发行页地址的话，用户还得自己在一堆资产里找那个 exe（真被问过
+       「不能直接获取下载吗」）。没有 .exe 就退回第一个资产，再没有就给空串，
+       界面会退回打开发行页。 */
+    const pick = assets.find((x) => /\.exe$/i.test(String(x.name || ''))) || assets[0] || null;
     const data = {
       // tag 形如 v1.2.0：去掉前缀 v，让界面直接显示数字
       latest: String(rel.tag_name || rel.name || '').replace(/^v/i, ''),
       url: String(rel.html_url || `https://github.com/${UPDATE_REPO}/releases`),
+      asset: pick ? String(pick.name || '') : '',
+      assetUrl: pick ? String(pick.browser_download_url || '') : '',
+      size: pick && Number(pick.size) > 0 ? Number(pick.size) : 0,
       name: String(rel.name || ''),
       publishedAt: String(rel.published_at || ''),
     };

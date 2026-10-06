@@ -1,6 +1,6 @@
 {
   "name": "wenxingua-desktop",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "private": true,
   "description": "问心卦 · 桌面版（Electron 外壳；内核仍是零依赖的纯 Node）",
   "main": "main.mjs",
